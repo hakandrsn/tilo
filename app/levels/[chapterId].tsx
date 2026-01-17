@@ -34,6 +34,10 @@ interface LevelCardProps {
 
 import { Image } from "expo-image"; // Ensure this is imported at top of file
 
+import { Ionicons } from "@expo/vector-icons"; // Add this import at the top if missing, I will check effectively by deducing or adding it.
+
+// ... existing imports
+
 const LevelCard: React.FC<LevelCardProps> = ({
   level,
   index,
@@ -44,7 +48,10 @@ const LevelCard: React.FC<LevelCardProps> = ({
   onPress,
 }) => {
   return (
-    <Animated.View entering={FadeInDown.delay(index * 20).springify()}>
+    <Animated.View
+      entering={FadeInDown.delay(index * 20).springify()}
+      style={{ width: cardSize, alignItems: "center" }}
+    >
       <TouchableOpacity
         style={[
           styles.levelCard,
@@ -66,41 +73,45 @@ const LevelCard: React.FC<LevelCardProps> = ({
           transition={200}
         />
 
-        {/* Dark Overlay for Readability */}
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            styles.cardOverlay,
-            !isUnlocked && styles.cardOverlayLocked,
-          ]}
-        />
+        {/* Dark Overlay for Readability (Only when locked) */}
+        {!isUnlocked && (
+          <View style={[StyleSheet.absoluteFill, styles.cardOverlayLocked]} />
+        )}
 
         {isUnlocked ? (
           <View style={styles.cardContent}>
             <View style={styles.levelBadge}>
               <Text style={styles.levelNumber}>{level.id}</Text>
             </View>
-
-            {progress?.completed && (
-              <View style={styles.starsRow}>
-                {[1, 2, 3].map((star) => (
-                  <Text
-                    key={star}
-                    style={[
-                      styles.star,
-                      star <= (progress?.stars || 0) && styles.starFilled,
-                    ]}
-                  >
-                    ★
-                  </Text>
-                ))}
-              </View>
-            )}
           </View>
         ) : (
-          <Text style={styles.lockIcon}>🔒</Text>
+          <View style={styles.centeredContent}>
+            <Text style={styles.lockIcon}>🔒</Text>
+          </View>
         )}
       </TouchableOpacity>
+
+      {/* Stars Row - Consistent Height for ALL cards */}
+      <View style={styles.starsRowBelow}>
+        {isUnlocked ? (
+          [1, 2, 3].map((star) => {
+            const isFilled =
+              progress?.completed && star <= (progress?.stars || 0);
+            return (
+              <Ionicons
+                key={star}
+                name="star"
+                size={14}
+                color={isFilled ? "#fbbf24" : "#e2e8f0"} // Gold or Light Gray
+                style={isFilled && styles.starShadow} // Optional shadow for filled
+              />
+            );
+          })
+        ) : (
+          // Placeholder for locked levels to maintain height
+          <View style={{ height: 14 }} />
+        )}
+      </View>
     </Animated.View>
   );
 };
@@ -294,47 +305,90 @@ const styles = StyleSheet.create({
     overflow: "hidden", // Important for image masking
   },
   cardBgImage: {
-    opacity: 0.8,
+    opacity: 1, // Full vibrancy!
   },
   cardOverlay: {
-    backgroundColor: "rgba(0,0,0,0.5)",
+    // Removed default dark overlay
+    backgroundColor: "transparent",
   },
   cardOverlayLocked: {
-    backgroundColor: "rgba(0,0,0,0.8)",
+    backgroundColor: "rgba(0,0,0,0.6)", // Lighter lock overlay
   },
   cardContent: {
+    flex: 1,
+    justifyContent: "space-between",
     alignItems: "center",
+    paddingVertical: 8,
   },
   levelCardLocked: {
-    opacity: 0.3,
-    backgroundColor: "#00000033",
+    opacity: 0.5,
   },
   levelBadge: {
-    backgroundColor: "rgba(0,0,0,0.3)",
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 4,
+    backgroundColor: "rgba(255,255,255,0.9)", // Bright badge
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginTop: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
   },
   levelNumber: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "900",
-    color: COLORS.textPrimary,
+    color: COLORS.textSecondary, // Dark text on light badge
   },
   lockIcon: {
     fontSize: 24,
+    marginTop: 20, // Center optically
   },
   starsRow: {
+    // Old starsRow style kept just in case, but unused now
     flexDirection: "row",
-    marginTop: 4,
-    gap: 2,
-    backgroundColor: "rgba(0,0,0,0.3)",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
+    gap: 1,
+    marginBottom: 4,
   },
-  star: { fontSize: 14, color: COLORS.starEmpty },
-  starFilled: { color: COLORS.starFilled },
+  starsRowBelow: {
+    flexDirection: "row",
+    gap: 2,
+    marginTop: 4,
+    height: 16, // Fixed height to prevent layout shifts
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  starSmall: {
+    fontSize: 12,
+    color: "#cbd5e1", // Light gray for empty stars (slate-300)
+  },
+  starFilledSmall: {
+    color: "#fbbf24", // Vibrant Gold
+  },
+  centeredContent: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  starPlaceholder: {
+    fontSize: 10,
+    color: "transparent",
+  },
+  star: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.5)", // Unearned star
+    textShadowColor: "black",
+    textShadowRadius: 1,
+  },
+  starFilled: {
+    color: "#fbbf24", // Vibrant Gold
+    textShadowColor: "rgba(0,0,0,0.5)",
+    textShadowRadius: 1,
+  },
+  starShadow: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.3,
+    shadowRadius: 1,
+  },
 });

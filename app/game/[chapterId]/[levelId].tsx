@@ -27,6 +27,7 @@ import {
   getBoardSize,
   HINT_CONFIG,
   LEVELS_PER_CHAPTER,
+  TOTAL_CHAPTERS,
 } from "../../../src/constants/gameConfig";
 import { usePuzzleGame } from "../../../src/hooks/usePuzzleGame";
 import {
@@ -201,6 +202,7 @@ export default function GameBoardScreen() {
   };
 
   const isLastLevel = level?.id === LEVELS_PER_CHAPTER;
+  const hasNextChapter = chapterId ? Number(chapterId) < TOTAL_CHAPTERS : false;
   const currentStars = calculateStars(moveCount, gridSize);
 
   // Fallback values for header while loading
@@ -412,11 +414,15 @@ export default function GameBoardScreen() {
         moves={moveCount}
         stars={earnedStars}
         isLastLevel={isLastLevel}
+        hasNextChapter={hasNextChapter}
         chapterColor={chapter?.color || COLORS.primary}
         onNextLevel={() => {
           setShowWinModal(false);
-          if (!isLastLevel)
+          if (!isLastLevel) {
             router.replace(`/game/${chapterId}/${Number(levelId) + 1}`);
+          } else if (hasNextChapter) {
+            router.replace(`/game/${Number(chapterId) + 1}/1`);
+          }
         }}
         onReplay={() => {
           setShowWinModal(false);

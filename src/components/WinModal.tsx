@@ -1,7 +1,17 @@
-import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Modal } from 'react-native';
-import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
-import { COLORS } from '../constants/gameConfig';
+import { DotLottie } from "@lottiefiles/dotlottie-react-native";
+import React, { useEffect } from "react";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Animated, {
+  Easing,
+  FadeIn,
+  ZoomIn, // Changed from SlideInDown
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
+import { COLORS } from "../constants/gameConfig";
 
 interface WinModalProps {
   visible: boolean;
@@ -9,14 +19,20 @@ interface WinModalProps {
   stars: number;
   isLastLevel: boolean;
   chapterColor?: string;
+  hasNextChapter?: boolean;
   onNextLevel: () => void;
   onReplay: () => void;
   onBackToLevels: () => void;
 }
 
-const Star: React.FC<{ filled: boolean; delay: number }> = ({ filled, delay }) => (
-  <Animated.View entering={SlideInDown.delay(delay).springify()}>
-    <Text style={[styles.star, filled && styles.starFilled]}>★</Text>
+const Star: React.FC<{ delay: number }> = ({ delay }) => (
+  <Animated.View entering={ZoomIn.delay(delay).springify()}>
+    <DotLottie
+      source={require("../assets/animations/star.lottie")}
+      autoplay
+      loop
+      style={{ width: 90, height: 90 }}
+    />
   </Animated.View>
 );
 
@@ -25,73 +41,127 @@ const WinModal: React.FC<WinModalProps> = ({
   moves,
   stars,
   isLastLevel,
+  hasNextChapter,
   chapterColor,
   onNextLevel,
   onReplay,
   onBackToLevels,
 }) => {
   const accentColor = chapterColor || COLORS.primary;
+  const scale = useSharedValue(1);
+
+  useEffect(() => {
+    if (visible) {
+      scale.value = withRepeat(
+        withSequence(
+          withTiming(1.1, { duration: 500, easing: Easing.ease }),
+          withTiming(1, { duration: 500, easing: Easing.ease }),
+        ),
+        -1,
+        true,
+      );
+    } else {
+      scale.value = 1;
+    }
+  }, [visible]);
+
+  const animatedTitleStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  if (!visible) return null; // Don't render if not visible
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+    <View style={[StyleSheet.absoluteFill, styles.overlayWrapper]}>
       <View style={styles.overlay}>
-        <Animated.View entering={FadeIn.duration(300)} style={styles.modalContainer}>
-          <Text style={styles.title}>Tebrikler!</Text>
+        <Animated.View
+          entering={FadeIn.duration(300)}
+          style={styles.modalContainer}
+        >
+          <Animated.Text style={[styles.title, animatedTitleStyle]}>
+            Tebrikler!
+          </Animated.Text>
           <Text style={styles.subtitle}>Bulmacayı Tamamladın</Text>
 
+          {/* Stars Container - Only render earned stars */}
           <View style={styles.starsContainer}>
-            <Star filled={stars >= 1} delay={100} />
-            <Star filled={stars >= 2} delay={200} />
-            <Star filled={stars >= 3} delay={300} />
+            {Array.from({ length: stars }).map((_, index) => (
+              <Star key={index} delay={index * 300} />
+            ))}
           </View>
 
           <View style={styles.statsContainer}>
-            <Text style={[styles.statValue, { color: accentColor }]}>{moves}</Text>
+            <Text style={[styles.statValue, { color: accentColor }]}>
+              {moves}
+            </Text>
             <Text style={styles.statLabel}>Hamle</Text>
           </View>
 
           <View style={styles.buttonsContainer}>
-            {!isLastLevel && (
+            {(!isLastLevel || hasNextChapter) && (
               <TouchableOpacity
-                style={[styles.button, styles.primaryButton, { backgroundColor: accentColor }]}
+                style={[
+                  styles.button,
+                  styles.primaryButton,
+                  { backgroundColor: accentColor },
+                ]}
                 onPress={onNextLevel}
                 activeOpacity={0.8}
               >
-                <Text style={styles.primaryButtonText}>Sonraki Seviye</Text>
+                <Text style={styles.primaryButtonText}>
+                  {isLastLevel ? "Sonraki Bölüm" : "Sonraki Seviye"}
+                </Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={[styles.button, styles.secondaryButton]} onPress={onReplay} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={[styles.button, styles.secondaryButton]}
+              onPress={onReplay}
+              activeOpacity={0.8}
+            >
               <Text style={styles.secondaryButtonText}>Tekrar Oyna</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.button} onPress={onBackToLevels} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={styles.button}
+              onPress={onBackToLevels}
+              activeOpacity={0.8}
+            >
               <Text style={styles.tertiaryButtonText}>Seviyelere Dön</Text>
             </TouchableOpacity>
           </View>
         </Animated.View>
       </View>
-    </Modal>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  overlayWrapper: {
+    zIndex: 9999, // Ensure it sits on top of everything
+    elevation: 9999, // For Android
+  },
   overlay: {
     flex: 1,
     backgroundColor: COLORS.overlay,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 24,
   },
   modalContainer: {
     backgroundColor: COLORS.surface,
     borderRadius: 24,
     padding: 32,
-    width: '100%',
+    width: "100%",
     maxWidth: 340,
-    alignItems: 'center',
+    alignItems: "center",
+  },
+  lottieContainer: {
+    marginBottom: 20,
+    alignItems: "center",
+    justifyContent: "center",
   },
   title: {
     fontSize: 28,
-    fontWeight: '700',
+    fontWeight: "700",
     color: COLORS.textPrimary,
     marginBottom: 4,
   },
@@ -101,9 +171,10 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   starsContainer: {
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: 24,
     gap: 8,
+    justifyContent: "center", // Centered content
   },
   star: {
     fontSize: 44,
@@ -113,12 +184,12 @@ const styles = StyleSheet.create({
     color: COLORS.starFilled,
   },
   statsContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 32,
   },
   statValue: {
     fontSize: 40,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   statLabel: {
     fontSize: 14,
@@ -126,20 +197,20 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   buttonsContainer: {
-    width: '100%',
+    width: "100%",
     gap: 10,
   },
   button: {
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 14,
-    alignItems: 'center',
+    alignItems: "center",
   },
   primaryButton: {},
   primaryButtonText: {
     color: COLORS.textPrimary,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   secondaryButton: {
     backgroundColor: COLORS.surfaceLight,
@@ -147,7 +218,7 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: COLORS.textPrimary,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   tertiaryButtonText: {
     color: COLORS.textMuted,
