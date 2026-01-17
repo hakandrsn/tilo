@@ -92,13 +92,14 @@ const Tile: React.FC<TileProps> = ({
         style={[
           styles.borderOverlay,
           { borderRadius: TILE_BORDER_RADIUS },
-          isHinted &&
-            value === index && {
-              borderColor: "tomato",
-              borderWidth: 2,
-            },
+          // Green border if tile is in correct position
+          value === index && {
+            borderColor: "#22c55e",
+            borderWidth: 3,
+          },
         ]}
       />
+      {/* Show position indicator for hinted tiles in wrong position */}
       {isHinted && value !== index && (
         <View style={styles.positionOverlay}>
           <Text style={styles.positionText}>
@@ -121,19 +122,18 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   positionOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.3)",
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: TILE_BORDER_RADIUS,
+    position: "absolute",
+    bottom: 2,
+    alignSelf: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.8)",
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
   positionText: {
     color: "#fff",
     fontSize: 12,
     fontWeight: "900",
-    textShadowColor: "rgba(0, 0, 0, 0.8)",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
   },
 });
 

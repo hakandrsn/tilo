@@ -20,7 +20,7 @@ interface GameActions {
   loadLevelState: (
     chapterId: number,
     levelId: number,
-    gridSize: GridSize
+    gridSize: GridSize,
   ) => Promise<boolean>;
   saveLevelState: (chapterId: number, levelId: number) => Promise<void>;
   clearLevelState: (chapterId: number, levelId: number) => Promise<void>;
@@ -68,7 +68,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     loadLevelState: async (
       chapterId: number,
       levelId: number,
-      gridSize: GridSize
+      gridSize: GridSize,
     ) => {
       try {
         const key = getLevelStateKey(chapterId, levelId);
@@ -142,7 +142,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         state.currentGrid,
         index,
         state.emptySlotIndex,
-        state.gridSize
+        state.gridSize,
       );
 
       if (result.moved) {
@@ -179,17 +179,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const grid = [...state.currentGrid];
       const emptyTileValue = state.gridSize.cols * state.gridSize.rows - 1;
 
-      // Find all wrong tiles that haven't been hinted yet
-      const wrongTiles: number[] = [];
+      // Find all wrong tiles - separate hinted and non-hinted
+      const wrongTilesNotHinted: number[] = [];
+      const wrongTilesHinted: number[] = [];
+
       for (let i = 0; i < grid.length; i++) {
         if (grid[i] !== i && i !== emptyTileValue) {
           const tileValue = i;
-          // Skip if this tile was already hinted
-          if (!state.hintedTiles.includes(tileValue)) {
-            wrongTiles.push(i);
+          if (state.hintedTiles.includes(tileValue)) {
+            wrongTilesHinted.push(i);
+          } else {
+            wrongTilesNotHinted.push(i);
           }
         }
       }
+
+      // Prefer non-hinted tiles, fallback to hinted tiles
+      const wrongTiles =
+        wrongTilesNotHinted.length > 0 ? wrongTilesNotHinted : wrongTilesHinted;
 
       if (wrongTiles.length === 0) return;
 
@@ -211,10 +218,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
         newEmptyIndex = targetIndex;
       }
 
+      // Only add to hintedTiles if it's not already there
+      const newHintedTiles = state.hintedTiles.includes(tileValue)
+        ? state.hintedTiles
+        : [...state.hintedTiles, tileValue];
+
       set({
         currentGrid: grid,
         emptySlotIndex: newEmptyIndex,
-        hintedTiles: [...state.hintedTiles, tileValue],
+        hintedTiles: newHintedTiles,
         hintsUsed: state.hintsUsed + 1,
         isSolved: isSolved(grid),
       });

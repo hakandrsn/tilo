@@ -11,11 +11,13 @@ import {
   useWindowDimensions,
 } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
+import ChapterNativeAd from "../src/components/ChapterNativeAd";
 import {
   BOARD_PADDING,
   COLORS,
   getGridColumns,
 } from "../src/constants/gameConfig";
+import { useAdActions } from "../src/store/adStore";
 import {
   useChapters,
   useDataActions,
@@ -105,6 +107,7 @@ export default function ChaptersScreen() {
   const chapters = useChapters();
   const { getChapters } = useDataActions();
   const isLoading = useIsDataLoading();
+  const adActions = useAdActions();
 
   React.useEffect(() => {
     getChapters();
@@ -114,6 +117,37 @@ export default function ChaptersScreen() {
   const padding = BOARD_PADDING;
   const gap = 15;
   const cardWidth = (width - padding * 2 - gap * (numColumns - 1)) / numColumns;
+
+  // Create rows of chapters with ads inserted at appropriate positions
+  const listData = React.useMemo(() => {
+    const rows: Array<{ type: "row" | "ad"; items?: Chapter[]; id: string }> =
+      [];
+    let currentRow: Chapter[] = [];
+
+    chapters.forEach((chapter, index) => {
+      currentRow.push(chapter);
+
+      // When row is full or it's the last chapter
+      if (currentRow.length === numColumns || index === chapters.length - 1) {
+        rows.push({
+          type: "row",
+          items: [...currentRow],
+          id: `row-${rows.length}`,
+        });
+        currentRow = [];
+      }
+
+      // Add ad after every 4th chapter
+      if (adActions.shouldShowNativeAdAtIndex(index)) {
+        rows.push({
+          type: "ad",
+          id: `ad-${index}`,
+        });
+      }
+    });
+
+    return rows;
+  }, [chapters, numColumns, adActions]);
 
   if (isLoading && chapters.length === 0) {
     return (
@@ -141,22 +175,31 @@ export default function ChaptersScreen() {
       />
 
       <FlatList
-        data={chapters}
-        renderItem={({ item, index }) => (
-          <ChapterCard
-            chapter={item}
-            index={index}
-            isUnlocked={progressActions.isChapterUnlocked(item.id)}
-            progress={progressActions.getChapterProgress(item.id)}
-            cardWidth={cardWidth}
-            onPress={() => router.push(`/levels/${item.id}`)}
-          />
-        )}
-        keyExtractor={(item) => item.id.toString()}
-        numColumns={numColumns}
-        key={numColumns}
+        data={listData}
+        renderItem={({ item }) => {
+          if (item.type === "ad") {
+            return <ChapterNativeAd index={parseInt(item.id.split("-")[1])} />;
+          }
+
+          // Render row of chapters
+          return (
+            <View style={[styles.chapterRow, { gap }]}>
+              {item.items?.map((chapter, idx) => (
+                <ChapterCard
+                  key={chapter.id}
+                  chapter={chapter}
+                  index={chapters.indexOf(chapter)}
+                  isUnlocked={progressActions.isChapterUnlocked(chapter.id)}
+                  progress={progressActions.getChapterProgress(chapter.id)}
+                  cardWidth={cardWidth}
+                  onPress={() => router.push(`/levels/${chapter.id}`)}
+                />
+              ))}
+            </View>
+          );
+        }}
+        keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.listContent, { padding }]}
-        columnWrapperStyle={{ gap }}
         ItemSeparatorComponent={() => <View style={{ height: gap }} />}
         showsVerticalScrollIndicator={false}
       />
@@ -167,6 +210,10 @@ export default function ChaptersScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   centered: { justifyContent: "center", alignItems: "center" },
+  chapterRow: {
+    flexDirection: "row",
+    justifyContent: "flex-start",
+  },
   headerStars: {
     flexDirection: "row",
     alignItems: "center",

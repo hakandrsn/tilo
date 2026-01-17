@@ -13,15 +13,17 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import {
   BOARD_PADDING,
   COLORS,
+  HINT_CONFIG,
   LEVELS_PER_CHAPTER,
   getResponsiveValue,
 } from "../src/constants/gameConfig";
+import { showRewarded } from "../src/services/adManager";
 import {
   useChapters,
   useDataActions,
   useIsDataLoading,
 } from "../src/store/dataStore";
-import { useHintCount } from "../src/store/hintStore";
+import { useHintActions, useHintCount } from "../src/store/hintStore";
 import { useLastPlayed, useTotalStars } from "../src/store/progressStore";
 
 export default function StartScreen() {
@@ -30,6 +32,7 @@ export default function StartScreen() {
   const totalStars = useTotalStars();
   const lastPlayed = useLastPlayed();
   const hintCount = useHintCount();
+  const hintActions = useHintActions();
   const chapters = useChapters();
   const { getChapters, getChapterById } = useDataActions();
   const isLoading = useIsDataLoading();
@@ -58,11 +61,37 @@ export default function StartScreen() {
     router.push("/chapters");
   };
 
+  const handleGetHints = async () => {
+    const success = await showRewarded();
+    if (success) {
+      hintActions.addHints(HINT_CONFIG.rewardedAdHints);
+    }
+  };
+
   const lastChapter = lastPlayed ? getChapterById(lastPlayed.chapterId) : null;
 
   return (
     <SafeAreaView style={styles.container}>
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: "",
+          headerStyle: { backgroundColor: COLORS.background },
+          headerShadowVisible: false,
+          headerRight: () => (
+            <TouchableOpacity
+              style={styles.hintButton}
+              onPress={handleGetHints}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.hintIcon}>💡</Text>
+              <View style={styles.hintBadge}>
+                <Text style={styles.hintBadgeText}>{hintCount}</Text>
+              </View>
+            </TouchableOpacity>
+          ),
+        }}
+      />
 
       <View style={styles.content}>
         {/* Logo */}
@@ -307,5 +336,29 @@ const styles = StyleSheet.create({
   progressText: {
     color: COLORS.textMuted,
     fontSize: 12,
+  },
+  hintButton: {
+    marginRight: 12,
+    position: "relative",
+  },
+  hintIcon: {
+    fontSize: 28,
+  },
+  hintBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    backgroundColor: COLORS.accent,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+  },
+  hintBadgeText: {
+    color: COLORS.textPrimary,
+    fontSize: 11,
+    fontWeight: "900",
   },
 });

@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
   },
   board: {
     backgroundColor: COLORS.surface,
-    borderRadius: 16,
+    borderRadius: 6, // Reduced from 16 to match TILE_BORDER_RADIUS
     overflow: "hidden",
     position: "relative",
   },

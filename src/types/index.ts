@@ -6,6 +6,7 @@ export type GridSize = { cols: number; rows: number };
 export interface Level {
   id: number;
   chapterId: number;
+  name?: string; // Optional level name
   gridSize: GridSize;
   imageSource: ImageSource;
 }

@@ -12,7 +12,7 @@ export const getGridSizeForLevel = (levelIndex: number): GridSize => {
 };
 
 export const normalizeGridSize = (
-  size: GridSize | number | undefined
+  size: GridSize | number | undefined,
 ): GridSize => {
   if (!size) return { cols: 3, rows: 4 }; // Default to 3x4
   if (typeof size === "number") {
@@ -33,7 +33,7 @@ export const BREAKPOINTS = {
 };
 
 export const getDeviceType = (
-  width: number
+  width: number,
 ): "phone" | "tablet" | "desktop" => {
   if (width >= BREAKPOINTS.desktop) return "desktop";
   if (width >= BREAKPOINTS.tablet) return "tablet";
@@ -42,7 +42,7 @@ export const getDeviceType = (
 
 export const getResponsiveValue = <T>(
   width: number,
-  values: { phone: T; tablet: T; desktop?: T }
+  values: { phone: T; tablet: T; desktop?: T },
 ): T => {
   const type = getDeviceType(width);
   if (type === "desktop") return values.desktop ?? values.tablet;
@@ -51,66 +51,22 @@ export const getResponsiveValue = <T>(
 };
 
 // ==========================================
-// MINIMALIST DARK THEME
+// COLORS - Re-exported from centralized file
 // ==========================================
 
-export const COLORS = {
-  // Backgrounds
-  background: "#121212", // Soft Black
-  surface: "#1e1e1e", // Dark Grey
-  surfaceLight: "#2a2a2a", // Lighter Grey
-  surfaceHover: "#333333",
+export { COLORS } from "./colors";
 
-  // Brand
-  primary: "#3d3d3d", // Neutral Primary
-  primaryDark: "#2d2d2d",
-  primaryLight: "#4d4d4d",
+// ==========================================
+// LAYOUT - Re-exported from centralized file
+// ==========================================
 
-  // Accent (Cyan)
-  accent: "#00f2ff", // Cyan Accent for interactive
-  accentLight: "#33f5ff",
-
-  // Secondary (Pink)
-  secondary: "#ec4899",
-  secondaryLight: "#f472b6",
-
-  // Status
-  success: "#10b981",
-  warning: "#f59e0b",
-  error: "#ef4444",
-
-  // Text
-  textPrimary: "#ffffff",
-  textSecondary: "#b3b3b3",
-  textMuted: "#7a7a7a",
-  textDark: "#334155",
-
-  // Border
-  border: "rgba(255, 255, 255, 0.08)",
-  borderLight: "rgba(255, 255, 255, 0.15)",
-
-  // Stars
-  starFilled: "#ffD700",
-  starEmpty: "#3a3a3a",
-
-  // Overlay
-  overlay: "rgba(0, 0, 0, 0.75)",
-  overlayLight: "rgba(0, 0, 0, 0.5)",
-
-  // Gradients
-  gradientPrimary: ["#3d3d3d", "#1e1e1e"],
-  gradientAccent: ["#00f2ff", "#00b8c2"],
-  gradientSurface: ["#1e1e1e", "#121212"],
-
-  // Shadows
-  shadowColor: "#000000",
-};
+export { LAYOUT } from "./layout";
 
 // ==========================================
 // UI CONSTANTS
 // ==========================================
 
-export const BOARD_PADDING = 12;
+export const BOARD_PADDING = 12; // Kept for backward compatibility, use LAYOUT.boardPadding
 export const TILE_GAP = 2;
 export const TILE_BORDER_RADIUS = 6;
 
@@ -130,14 +86,15 @@ export const getGridColumns = (screenWidth: number): number => {
 export const HINT_CONFIG = {
   defaultHints: 10,
   chapterBonus: 5,
-  rewardedAdHints: 3,
+  rewardedAdHints: 10, // AdMob'da ayarlanan ödül miktarı
 };
 
 // ==========================================
-// AD CONFIG (Test IDs)
+// AD CONFIG
 // ==========================================
 
-export const AD_CONFIG = {
+// Test Ad IDs (for development)
+const TEST_AD_CONFIG = {
   interstitial: {
     android: "ca-app-pub-3940256099942544/1033173712",
     ios: "ca-app-pub-3940256099942544/4411468910",
@@ -150,7 +107,34 @@ export const AD_CONFIG = {
     android: "ca-app-pub-3940256099942544/6300978111",
     ios: "ca-app-pub-3940256099942544/2934735716",
   },
+  native: {
+    android: "ca-app-pub-3940256099942544/2247696110",
+    ios: "ca-app-pub-3940256099942544/3986624511",
+  },
 };
+
+// Production Ad IDs (for release builds)
+const PROD_AD_CONFIG = {
+  interstitial: {
+    android: "ca-app-pub-5502183878891798/5198222798",
+    ios: "ca-app-pub-5502183878891798/3827454899",
+  },
+  rewarded: {
+    android: "ca-app-pub-5502183878891798/3109269595",
+    ios: "ca-app-pub-5502183878891798/2514373229",
+  },
+  banner: {
+    android: "ca-app-pub-5502183878891798/4422351261",
+    ios: "ca-app-pub-5502183878891798/2934735716",
+  },
+  native: {
+    android: "ca-app-pub-5502183878891798/2705944917",
+    ios: "ca-app-pub-5502183878891798/8494276450",
+  },
+};
+
+// Automatically switch between test and production IDs
+export const AD_CONFIG = __DEV__ ? TEST_AD_CONFIG : PROD_AD_CONFIG;
 
 // ==========================================
 // STORAGE KEYS
@@ -174,10 +158,16 @@ export const STORAGE_KEYS = {
 export const STAR_THRESHOLDS: Record<string, { gold: number; silver: number }> =
   {
     // Vertical grids (N x N+1)
-    "2x3": { gold: 10, silver: 20 }, // 6 tiles
-    "3x4": { gold: 25, silver: 45 }, // 12 tiles
-    "4x5": { gold: 50, silver: 90 }, // 20 tiles
-    "5x6": { gold: 80, silver: 140 }, // 30 tiles
+    "1x2": { gold: 1, silver: 2 }, // 2 tiles
+    "2x3": { gold: 15, silver: 30 }, // 6 tiles
+    "3x4": { gold: 30, silver: 60 }, // 12 tiles
+    "4x5": { gold: 60, silver: 120 }, // 20 tiles
+    "5x6": { gold: 90, silver: 180 }, // 30 tiles
+    "6x7": { gold: 120, silver: 240 }, // 42 tiles
+    "7x8": { gold: 150, silver: 300 }, // 56 tiles
+    "8x9": { gold: 180, silver: 360 }, // 72 tiles
+    "9x10": { gold: 210, silver: 420 }, // 90 tiles
+    "10x11": { gold: 240, silver: 480 }, // 110 tiles
   };
 
 export const calculateStars = (moves: number, gridSize: GridSize): number => {

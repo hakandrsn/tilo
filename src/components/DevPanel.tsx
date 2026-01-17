@@ -1,5 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import { doc, writeBatch } from "firebase/firestore";
+import { getDownloadURL, getStorage, ref } from "firebase/storage";
 import React, { useState } from "react";
 import {
   Alert,
@@ -10,11 +12,75 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { COLORS } from "../constants/gameConfig";
+import { db } from "../../firebaseConfig";
+import { COLORS, getGridSizeForLevel } from "../constants/gameConfig";
 import { useGameStore } from "../store/gameStore";
 import { useHintActions } from "../store/hintStore";
 import { useProgressActions } from "../store/progressStore";
 import { createSolvedGrid } from "../utils/puzzleLogic";
+
+const uploadLevelsToFirebase = async (targetChapterId: string) => {
+  const storage = getStorage();
+  const batch = writeBatch(db);
+
+  const FILE_EXTENSION = ".jpg";
+  const FOLDER_NAME = `chapter-${targetChapterId}-levels`; // Dynamic folder name
+
+  try {
+    console.log(
+      `⏳ Level yüklemesi başlıyor... Chapter: ${targetChapterId}, Folder: ${FOLDER_NAME}`,
+    );
+
+    const promises = Array.from({ length: 24 }, (_, i) => i + 1).map(
+      async (levelId) => {
+        // 1. Storage path: "chapter-1-levels/level-1.jpg"
+        const fileName = `level-${levelId}${FILE_EXTENSION}`;
+        const storageRef = ref(storage, `${FOLDER_NAME}/${fileName}`);
+
+        let downloadUrl = "";
+        try {
+          downloadUrl = await getDownloadURL(storageRef);
+          console.log(`✅ Level ${levelId} resmi bulundu`);
+        } catch (err) {
+          console.error(`❌ Level ${levelId} resmi YOK: ${fileName}`);
+          downloadUrl = "https://via.placeholder.com/500";
+        }
+
+        // 2. Prepare Data
+        const gridSize = getGridSizeForLevel(levelId);
+        const levelData = {
+          id: levelId,
+          chapterId: Number(targetChapterId),
+          gridSize: gridSize,
+          imageSource: { uri: downloadUrl },
+          moves: 0, // Reset logic or default
+          stars: 0,
+        };
+
+        // 3. Firestore Ref: chapters/{id}/levels/{levelId}
+        const levelDocRef = doc(
+          db,
+          "chapters",
+          targetChapterId,
+          "levels",
+          levelId.toString(),
+        );
+        batch.set(levelDocRef, levelData, { merge: true });
+      },
+    );
+
+    // Wait for all
+    await Promise.all(promises);
+
+    // Commit batch
+    await batch.commit();
+
+    alert(`Chapter ${targetChapterId} için 24 level yüklendi! 🚀`);
+  } catch (error) {
+    console.error("Level Upload Hatası:", error);
+    alert("Hata oluştu, konsola bak.");
+  }
+};
 
 const DevPanel: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -70,7 +136,7 @@ const DevPanel: React.FC = () => {
               await AsyncStorage.clear();
               Alert.alert(
                 "Başarılı",
-                "Tüm veriler silindi. Uygulama yeniden başlatılıyor..."
+                "Tüm veriler silindi. Uygulama yeniden başlatılıyor...",
               );
               setIsOpen(false);
               // Reload app
@@ -82,7 +148,7 @@ const DevPanel: React.FC = () => {
             }
           },
         },
-      ]
+      ],
     );
   };
 
@@ -158,6 +224,13 @@ const DevPanel: React.FC = () => {
                 activeOpacity={0.8}
               >
                 <Text style={styles.buttonText}>🗑️ Storage Temizle</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.button, styles.clearButton]}
+                onPress={() => uploadLevelsToFirebase(chapterId)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.buttonText}>Firebase'a Yükle (Levels)</Text>
               </TouchableOpacity>
             </View>
 

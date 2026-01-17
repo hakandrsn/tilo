@@ -2,7 +2,7 @@ import ConfirmModal from "@/src/components/ConfirmModal";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -14,7 +14,11 @@ import {
 } from "react-native";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 import { SafeAreaView as SafeAreaContextView } from "react-native-safe-area-context";
-import PuzzleBoard from "../../../src/components/PuzzleBoard";
+
+// Lazy load PuzzleBoard for better performance
+const PuzzleBoard = lazy(() => import("../../../src/components/PuzzleBoard"));
+
+import GameBannerAd from "../../../src/components/GameBannerAd";
 import WinModal from "../../../src/components/WinModal";
 import {
   BOARD_PADDING,
@@ -29,10 +33,12 @@ import {
   showInterstitial,
   showRewarded,
 } from "../../../src/services/adManager";
+import { useAdActions } from "../../../src/store/adStore";
 import { useDataActions, useIsDataLoading } from "../../../src/store/dataStore";
+import { useGameActions, useGameStore } from "../../../src/store/gameStore";
 import { useHintActions, useHintCount } from "../../../src/store/hintStore";
 import { useProgressActions } from "../../../src/store/progressStore";
-import { Chapter, Level } from "../../../src/types";
+import { Chapter, GridSize, Level } from "../../../src/types";
 
 export default function GameBoardScreen() {
   const router = useRouter();
@@ -58,6 +64,19 @@ export default function GameBoardScreen() {
   const progressActions = useProgressActions();
   const hintCount = useHintCount();
   const hintActions = useHintActions();
+  const gameActions = useGameActions();
+  const adActions = useAdActions();
+
+  // Show interstitial ad on level entry (not first 4 levels of chapter 1)
+  useEffect(() => {
+    if (
+      level &&
+      chapter &&
+      adActions.canShowInterstitial(chapter.id, level.id)
+    ) {
+      showInterstitial();
+    }
+  }, [level, chapter]);
 
   useEffect(() => {
     const initData = async () => {
@@ -78,19 +97,34 @@ export default function GameBoardScreen() {
     }
   }, [level]);
 
+  // Declare handleWin first (will use gridSize from usePuzzleGame later)
+  const [puzzleGridSize, setPuzzleGridSize] = useState<GridSize>({
+    cols: 3,
+    rows: 3,
+  });
+
   const handleWin = useCallback(
     async (moves: number) => {
       if (level) {
-        const stars = calculateStars(moves, gridSize);
+        const stars = calculateStars(moves, puzzleGridSize);
         setEarnedStars(stars);
-        setShowWinModal(true);
+
+        // Complete and save BEFORE showing modal to prevent race conditions
+        progressActions.completeLevel(
+          level.chapterId,
+          level.id,
+          moves,
+          puzzleGridSize,
+        );
+
         if (level.id === LEVELS_PER_CHAPTER) {
           hintActions.addChapterBonus();
         }
-        await showInterstitial();
+
+        setShowWinModal(true);
       }
     },
-    [level, hintActions]
+    [level, hintActions, puzzleGridSize, progressActions],
   );
 
   const {
@@ -109,29 +143,19 @@ export default function GameBoardScreen() {
     onWin: handleWin,
   });
 
+  // Update puzzleGridSize when gridSize changes
+  useEffect(() => {
+    if (gridSize) {
+      setPuzzleGridSize(gridSize);
+    }
+  }, [gridSize]);
+
   const isUnlocked =
     chapterId && levelId
       ? progressActions.isLevelUnlocked(Number(chapterId), Number(levelId))
       : false;
-  const levelProgress =
-    chapterId && levelId
-      ? progressActions.getLevelProgress(Number(chapterId), Number(levelId))
-      : null;
-  const isPreviouslyWon = levelProgress?.completed ?? false;
-  const [isReplaying, setIsReplaying] = useState(false);
-  const effectiveIsSolved = isSolved || (isPreviouslyWon && !isReplaying);
-
-  const handleReplay = () => {
-    setIsReplaying(true);
-    resetGame();
-  };
 
   const handleResetPress = () => {
-    if (effectiveIsSolved && !isReplaying) {
-      handleReplay();
-      return;
-    }
-
     if (moveCount > 0 && !isSolved) {
       setShowResetModal(true);
     } else {
@@ -139,22 +163,33 @@ export default function GameBoardScreen() {
     }
   };
 
-  useEffect(() => {
-    if (showWinModal) completeAndSave();
-  }, [showWinModal, completeAndSave]);
+  // Removed: completion now happens synchronously in handleWin
 
   const handleGetHints = async () => {
     if (hintCount > 0) {
       const isEverythingCorrect = grid.every(
         (val: number, idx: number) =>
-          val === idx || val === gridSize.cols * gridSize.rows - 1
+          val === idx || val === gridSize.cols * gridSize.rows - 1,
       );
       if (isEverythingCorrect) {
         setShowSolvedInfoModal(true);
         return;
       }
+
+      // Use hint
       useHint();
       hintActions.useHint();
+
+      // Check if hint solved the puzzle
+      setTimeout(() => {
+        const updatedState = useGameStore.getState();
+        if (updatedState.isSolved && updatedState.isInitialized) {
+          if (level) {
+            gameActions.clearLevelState(level.chapterId, level.id);
+          }
+          handleWin(updatedState.moveCount);
+        }
+      }, 100);
     } else {
       setShowAdModal(true);
     }
@@ -165,44 +200,56 @@ export default function GameBoardScreen() {
     router.back();
   };
 
-  if (isLoading || !chapter || !level) {
-    return (
-      <View style={styles.container}>
-        <Stack.Screen options={{ headerShown: false }} />
-        <View style={styles.errorContainer}>
-          <ActivityIndicator size="large" color={COLORS.accent} />
-        </View>
-      </View>
-    );
-  }
-
-  const isLastLevel = level.id === LEVELS_PER_CHAPTER;
+  const isLastLevel = level?.id === LEVELS_PER_CHAPTER;
   const currentStars = calculateStars(moveCount, gridSize);
 
+  // Fallback values for header while loading
+  const displayChapterId = chapter?.id || chapterId;
+  const displayLevelId = level?.id || levelId;
+
+  // Header Title Logic
+  const getHeaderTitle = () => {
+    if (level?.name) return level.name;
+    if (chapter?.name) return `${chapter.name} - ${displayLevelId}`;
+    return `${displayChapterId}-${displayLevelId}`;
+  };
+
   return (
-    <SafeAreaContextView style={styles.container}>
+    <SafeAreaContextView style={styles.container} edges={["top"]}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* Optimized HUD Header */}
-      <View style={styles.hud}>
+      {/* Banner Ad at Top */}
+      {adActions.canShowBanner() && <GameBannerAd />}
+
+      {/* Fixed Header Section */}
+      <View style={styles.headerSection}>
+        {/* Top Row: Back - Level - Preview */}
         <View style={styles.topRow}>
           <TouchableOpacity style={styles.backBtn} onPress={handleBack}>
             <Ionicons name="arrow-back" size={32} color={COLORS.textPrimary} />
           </TouchableOpacity>
 
           <View style={styles.levelInfo}>
-            <Text style={styles.levelLabel}>
-              {chapter.id}-{level.id}
+            <Text
+              style={styles.levelLabel}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              {getHeaderTitle()}
             </Text>
           </View>
 
-          <TouchableOpacity
-            style={styles.previewBtn}
-            onPress={() => setShowPreviewModal(true)}
-          >
-            <Image source={level.imageSource} style={styles.previewThumb} />
-            <Text style={styles.zoomTag}>🔍</Text>
-          </TouchableOpacity>
+          {level ? (
+            <TouchableOpacity
+              style={styles.previewBtn}
+              onPress={() => setShowPreviewModal(true)}
+            >
+              <Image source={level.imageSource} style={styles.previewThumb} />
+              <Text style={styles.zoomTag}>🔍</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.previewBtn, { opacity: 0.5 }]} />
+          )}
         </View>
 
         {/* Stats Row: Stars - Moves - Reset */}
@@ -231,30 +278,26 @@ export default function GameBoardScreen() {
           <TouchableOpacity
             style={styles.resetBtnHeader}
             onPress={handleResetPress}
+            disabled={!level}
           >
             <Ionicons name="refresh" size={28} color={COLORS.textSecondary} />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Puzzle Board or Solved Image */}
-      <View style={styles.boardWrapper}>
-        {effectiveIsSolved && !isSolved && !isReplaying ? (
-          <Animated.View
-            entering={FadeIn}
-            style={{ width: boardSize, height: boardSize }}
-          >
-            <Image
-              source={level.imageSource}
-              style={{ width: "100%", height: "100%", borderRadius: 8 }}
-            />
-          </Animated.View>
-        ) : (
-          <Animated.View
-            entering={FadeIn}
-            key={isInitialized ? "board" : "loading"}
-          >
-            {isInitialized && (
+      {/* Flexible Board Section */}
+      <View style={styles.boardSection}>
+        <Animated.View
+          entering={FadeIn}
+          key={levelId} // Trigger animation on level change
+          style={styles.boardContainer}
+        >
+          {level && isInitialized ? (
+            <Suspense
+              fallback={
+                <ActivityIndicator size="large" color={COLORS.accent} />
+              }
+            >
               <PuzzleBoard
                 grid={grid}
                 gridSize={gridSize}
@@ -262,15 +305,16 @@ export default function GameBoardScreen() {
                 onTilePress={handleTilePress}
                 boardSize={boardSize}
               />
-            )}
-          </Animated.View>
-        )}
+            </Suspense>
+          ) : (
+            <ActivityIndicator size="large" color={COLORS.accent} />
+          )}
+        </Animated.View>
       </View>
 
-      {/* Floating Bottom Controls */}
-      {/* Floating Bottom Controls - Only Hint or Empty */}
-      <View style={styles.controls}>
-        {!effectiveIsSolved && (
+      {/* Fixed Controls Section */}
+      <View style={styles.controlsSection}>
+        {!isSolved && (
           <TouchableOpacity
             style={[styles.controlBtn, styles.btnPrimary]}
             onPress={handleGetHints}
@@ -293,11 +337,13 @@ export default function GameBoardScreen() {
           onPress={() => setShowPreviewModal(false)}
         >
           <Animated.View entering={FadeInUp} style={styles.modalBox}>
-            <Image
-              source={level.imageSource}
-              style={styles.fullImg}
-              contentFit="contain"
-            />
+            {level && (
+              <Image
+                source={level.imageSource}
+                style={styles.fullImg}
+                contentFit="contain"
+              />
+            )}
             <TouchableOpacity
               style={styles.modalClose}
               onPress={() => setShowPreviewModal(false)}
@@ -366,7 +412,7 @@ export default function GameBoardScreen() {
         moves={moveCount}
         stars={earnedStars}
         isLastLevel={isLastLevel}
-        chapterColor={chapter.color}
+        chapterColor={chapter?.color || COLORS.primary}
         onNextLevel={() => {
           setShowWinModal(false);
           if (!isLastLevel)
@@ -374,11 +420,11 @@ export default function GameBoardScreen() {
         }}
         onReplay={() => {
           setShowWinModal(false);
-          handleReplay();
+          resetGame();
         }}
         onBackToLevels={() => {
           setShowWinModal(false);
-          router.replace(`/levels/${chapterId}`);
+          router.back();
         }}
       />
     </SafeAreaContextView>
@@ -387,10 +433,12 @@ export default function GameBoardScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  hud: {
+
+  // Fixed Header Section
+  headerSection: {
     paddingHorizontal: BOARD_PADDING,
     paddingTop: 10,
-    gap: 10,
+    paddingBottom: 8,
   },
   topRow: {
     flexDirection: "row",
@@ -434,7 +482,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 12,
-    marginBottom: 12,
+    paddingTop: 8,
   },
   starsArea: {
     flexDirection: "row",
@@ -461,19 +509,28 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "flex-end",
   },
-  boardWrapper: {
+
+  // Flexible Board Section
+  boardSection: {
     flex: 1,
-    padding: BOARD_PADDING,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: BOARD_PADDING,
   },
-  controls: {
-    position: "absolute",
-    bottom: 40, // Moved up
-    left: 0,
-    right: 0,
+  boardContainer: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  // Fixed Controls Section
+  controlsSection: {
+    height: 120,
     flexDirection: "row",
     justifyContent: "center",
-    gap: 50, // Increased gap
-    zIndex: 100,
+    alignItems: "center",
+    paddingBottom: 20,
   },
   controlBtn: {
     width: 70,

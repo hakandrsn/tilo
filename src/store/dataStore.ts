@@ -14,7 +14,7 @@ interface DataActions {
   getChapterById: (id: number) => Chapter | undefined;
   getLevelById: (
     chapterId: number,
-    levelId: number
+    levelId: number,
   ) => Promise<Level | undefined>;
 }
 
@@ -34,6 +34,7 @@ export const useDataStore = create<DataStore>((set, get) => ({
 
       set({ isLoading: true });
       const fetchedChapters = await fetchChapters();
+
       set({ chapters: fetchedChapters, isLoading: false });
       return fetchedChapters;
     },
@@ -41,6 +42,7 @@ export const useDataStore = create<DataStore>((set, get) => ({
     getLevels: async (chapterId: number) => {
       const { levelsCache } = get();
       if (levelsCache[chapterId]) return levelsCache[chapterId];
+      console.log(levelsCache[chapterId]);
 
       set({ isLoading: true });
       const fetchedLevels = await fetchLevels(chapterId);

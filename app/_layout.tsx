@@ -13,6 +13,7 @@ import { COLORS } from "../src/constants/gameConfig";
 import { initializeAds } from "../src/services/adManager";
 import { loginWithDevice } from "../src/services/authService";
 import { getDeviceId } from "../src/services/deviceService";
+import { useAdActions } from "../src/store/adStore";
 import { useHintActions } from "../src/store/hintStore";
 import { useProgressActions } from "../src/store/progressStore";
 
@@ -38,6 +39,7 @@ export default function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
   const progressActions = useProgressActions();
   const hintActions = useHintActions();
+  const adActions = useAdActions();
 
   useEffect(() => {
     async function prepare() {
@@ -51,6 +53,7 @@ export default function RootLayout() {
         // THEN load progress (which needs auth.currentUser to fetch cloud data)
         await progressActions.loadProgress();
         await hintActions.loadHints();
+        await adActions.loadAdState();
 
         try {
           initializeAds();
@@ -109,7 +112,6 @@ export default function RootLayout() {
               headerTintColor: COLORS.textPrimary,
               headerTitleStyle: { fontWeight: "600" },
               contentStyle: { backgroundColor: COLORS.background },
-              animation: "slide_from_right",
               headerShadowVisible: false,
             }}
           />

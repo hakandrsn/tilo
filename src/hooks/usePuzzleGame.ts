@@ -38,7 +38,7 @@ export const usePuzzleGame = ({ level, onWin }: UsePuzzleGameOptions) => {
         const resumed = await gameActions.loadLevelState(
           level.chapterId,
           level.id,
-          normalizedSize
+          normalizedSize,
         );
         if (!resumed) {
           gameActions.initializeGame(normalizedSize);
@@ -47,16 +47,6 @@ export const usePuzzleGame = ({ level, onWin }: UsePuzzleGameOptions) => {
       initOrResume();
     }
   }, [level?.id, level?.chapterId, level?.gridSize]);
-
-  // Win condition
-  useEffect(() => {
-    if (isSolved && isInitialized) {
-      if (level) {
-        gameActions.clearLevelState(level.chapterId, level.id);
-      }
-      onWin?.(moveCount);
-    }
-  }, [isSolved, isInitialized, moveCount, onWin, level]);
 
   // Auto-save on AppState change
   useEffect(() => {
@@ -75,7 +65,7 @@ export const usePuzzleGame = ({ level, onWin }: UsePuzzleGameOptions) => {
 
     const subscription = AppState.addEventListener(
       "change",
-      handleAppStateChange
+      handleAppStateChange,
     );
 
     return () => {
@@ -88,9 +78,21 @@ export const usePuzzleGame = ({ level, onWin }: UsePuzzleGameOptions) => {
   const handleTilePress = useCallback(
     (index: number) => {
       if (isSolved) return;
-      gameActions.moveTile(index);
+      const moved = gameActions.moveTile(index);
+
+      // Check win condition after move
+      if (moved) {
+        // Get updated state after move
+        const updatedState = useGameStore.getState();
+        if (updatedState.isSolved && updatedState.isInitialized) {
+          if (level) {
+            gameActions.clearLevelState(level.chapterId, level.id);
+          }
+          onWin?.(updatedState.moveCount);
+        }
+      }
     },
-    [isSolved, gameActions]
+    [isSolved, gameActions, level, onWin],
   );
 
   const resetGame = useCallback(() => {
@@ -106,7 +108,7 @@ export const usePuzzleGame = ({ level, onWin }: UsePuzzleGameOptions) => {
         level.chapterId,
         level.id,
         moveCount,
-        normalizeGridSize(level.gridSize)
+        normalizeGridSize(level.gridSize),
       );
     }
   }, [isSolved, level, moveCount, progressActions]);

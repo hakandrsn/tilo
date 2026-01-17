@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React from "react";
+import React, { useEffect } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -16,7 +16,10 @@ import {
   getResponsiveValue,
 } from "../../src/constants/gameConfig";
 import { useDataActions, useIsDataLoading } from "../../src/store/dataStore";
-import { useProgressActions } from "../../src/store/progressStore";
+import {
+  useProgressActions,
+  useProgressStore,
+} from "../../src/store/progressStore";
 import { Level, LevelProgress } from "../../src/types";
 
 interface LevelCardProps {
@@ -107,12 +110,16 @@ export default function LevelsScreen() {
   const { width } = useWindowDimensions();
   const { chapterId } = useLocalSearchParams<{ chapterId: string }>();
   const progressActions = useProgressActions();
+
+  // Subscribe to progress changes for real-time updates
+  const progress = useProgressStore((state) => state.progress);
+
   const { getLevels, getChapterById } = useDataActions();
   const isLoading = useIsDataLoading();
   const [levels, setLevels] = React.useState<Level[]>([]);
   const chapter = getChapterById(Number(chapterId));
 
-  React.useEffect(() => {
+  useEffect(() => {
     const loadLevels = async () => {
       const fetchedLevels = await getLevels(Number(chapterId));
       setLevels(fetchedLevels);
