@@ -21,6 +21,7 @@ interface JigsawState {
   maxZIndex: number;
   status: GameStatus;
   isHapticEnabled: boolean;
+  moves: number;
 }
 
 interface JigsawActions {
@@ -45,6 +46,7 @@ const initialState: JigsawState = {
   maxZIndex: 1,
   status: "playing",
   isHapticEnabled: true,
+  moves: 0,
 };
 
 // Helper: Shuffle an array
@@ -201,7 +203,7 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
                   (m) => m.groupId === sourceGroupId,
                 );
                 sourceMembers.forEach((m) => {
-                  pieces[m.id].groupId = targetGroupId;
+                  pieces[m.id] = { ...pieces[m.id], groupId: targetGroupId };
                 });
                 mergedSomething = true;
               }
@@ -228,7 +230,7 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
       const anchorPiece = pieces[anchorId];
       if (!anchorPiece) return { merged: false };
 
-      const draggedGroupId = anchorPiece.groupId;
+      let draggedGroupId = anchorPiece.groupId;
       const groupPieces = Object.values(pieces).filter(
         (p) => p.groupId === draggedGroupId,
       );
@@ -280,16 +282,9 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
       });
 
       // 6. SPLIT & SCATTER LOGIC (Refined)
-      // Only the specific overlapping pieces are detached and moved.
-      // The rest of their original groups remain touched.
-
       const victimMoves: Map<number, { row: number; col: number }> = new Map();
-
-      // Build simulation occupancy: start with dragged group's NEW position
       const simulatedOccupied = new Set(incomingSlots);
 
-      // Add all pieces that are NOT victims (including the rest of the victim's old group)
-      // and NOT the dragged group (which is already in incomingSlots)
       const victimPieceIds = new Set(victimPieces.map((p) => p.id));
       Object.values(pieces).forEach((p) => {
         if (p.groupId !== draggedGroupId && !victimPieceIds.has(p.id)) {
@@ -297,16 +292,18 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
         }
       });
 
+      // Track ALL groups that need merge checks (dragged + displaced + merged-into)
+      const groupsToCheck = new Set<string>();
+      groupsToCheck.add(draggedGroupId);
+
       // Process each individual victim piece
       for (const p of victimPieces) {
-        // Find nearest empty slot for THIS piece alone
-        // using [p] as the "group" to search
         const shift = findNearestEmptySlotForGroup(
           [p],
           pieces,
           state.gridSize,
           simulatedOccupied,
-          p.currentRow, // Prefer pushing away logic?
+          p.currentRow,
           p.currentCol,
         );
 
@@ -316,7 +313,6 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
           victimMoves.set(p.id, { row: newRow, col: newCol });
           simulatedOccupied.add(`${newRow},${newCol}`);
         } else {
-          // No slot found. Abort move to prevent overlapping without resolution.
           return { merged: false };
         }
       }
@@ -336,40 +332,34 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
 
       // Move and SPLIT victims
       victimMoves.forEach((pos, pId) => {
+        const newGroupId = `group-split-${Date.now()}-${pId}`;
         pieces[pId] = {
           ...pieces[pId],
           currentRow: pos.row,
           currentCol: pos.col,
-          // Split: Assign new unique groupId (use random or logic, here simplified to 'split-TIMESTAMP-ID')
-          groupId: `group-split-${Date.now()}-${pId}`,
+          groupId: newGroupId,
           zIndex: state.maxZIndex + 1,
         };
+        // This displaced piece is now a candidate for merging!
+        groupsToCheck.add(newGroupId);
       });
 
-      // 7b. FRACTURE CHECK (User Request: "H şeklinde... orta bağlantısı koptuğundan sağ ve sol... ayrılsın")
-      // Check if the survivors of affected groups are still connected.
-      // If not, split them into separate groups.
-
-      // We only care about groups that HAD victims involved.
-      // We need to check the *original* groupIds of the victim pieces.
+      // 7b. FRACTURE CHECK
       const affectedGroupIds = new Set<string>();
       victimPieces.forEach((vp) => affectedGroupIds.add(vp.groupId));
 
       affectedGroupIds.forEach((groupId) => {
-        // Get remaining pieces of this group (those that were NOT moved/split)
         const survivors = Object.values(pieces).filter(
           (p) => p.groupId === groupId,
         );
+        if (survivors.length <= 1) return;
 
-        if (survivors.length <= 1) return; // 0 or 1 piece is always connected
-
-        // Find connected components using BFS
+        // BFS for survivors...
         const visited = new Set<number>();
         const components: JigsawPiece[][] = [];
 
         for (const startPiece of survivors) {
           if (visited.has(startPiece.id)) continue;
-
           const component: JigsawPiece[] = [];
           const queue = [startPiece];
           visited.add(startPiece.id);
@@ -377,16 +367,12 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
           while (queue.length > 0) {
             const curr = queue.shift()!;
             component.push(curr);
-
-            // Find neighbors in the SAME group
             const neighbors = survivors.filter((n) => {
               if (visited.has(n.id)) return false;
               const dRow = Math.abs(n.currentRow - curr.currentRow);
               const dCol = Math.abs(n.currentCol - curr.currentCol);
-              // Neighbors checks: strict adjacency (up/down/left/right)
               return dRow + dCol === 1;
             });
-
             for (const n of neighbors) {
               visited.add(n.id);
               queue.push(n);
@@ -395,32 +381,43 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
           components.push(component);
         }
 
-        // If we found more than 1 component, the group effectively fractured.
-        // We leave the first component with the original ID, and assign new IDs to the rest.
         if (components.length > 1) {
           for (let i = 1; i < components.length; i++) {
             const newGroupId = `fracture-${Date.now()}-${groupId}-${i}`;
             components[i].forEach((p) => {
-              pieces[p.id] = {
-                ...pieces[p.id],
-                groupId: newGroupId,
-              };
+              pieces[p.id] = { ...pieces[p.id], groupId: newGroupId };
             });
+            // Fractured parts also need to be checked for merges?
+            // Primarily they just broke apart, but they didn't move.
+            // So they likely won't merge, but safe to add if we wanted.
+            // For now, let's trust they only broke.
           }
         }
       });
 
-      // 8. Recursive Merge Logic
+      // 8. ROBUST MULTI-GROUP MERGE LOGIC
+      // Process list of groups. If A merges into B, A is done, but B might merge into C.
       let didMerge = false;
-      let mergePass = true;
+      const processedGroups = new Set<string>();
 
-      while (mergePass) {
-        mergePass = false;
-        const currentGroupMembers = Object.values(pieces).filter(
-          (p) => p.groupId === draggedGroupId,
+      // Convert Set to Array to allow pushing new items during iteration?
+      // Better: use a simple array as a queue.
+      const queue = Array.from(groupsToCheck);
+
+      while (queue.length > 0) {
+        const currentGroupId = queue.shift()!;
+        if (processedGroups.has(currentGroupId)) continue;
+
+        // Find members (might be empty if already merged)
+        const members = Object.values(pieces).filter(
+          (p) => p.groupId === currentGroupId,
         );
+        if (members.length === 0) continue;
 
-        for (const p of currentGroupMembers) {
+        let mergedThisRound = false;
+
+        // Check for connections
+        for (const p of members) {
           const neighbors = [
             { r: p.currentRow - 1, c: p.currentCol },
             { r: p.currentRow + 1, c: p.currentCol },
@@ -433,7 +430,7 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
               (np) =>
                 np.currentRow === n.r &&
                 np.currentCol === n.c &&
-                np.groupId !== draggedGroupId,
+                np.groupId !== currentGroupId,
             );
 
             if (neighborPiece) {
@@ -446,22 +443,29 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
                 correctRowDiff === actualRowDiff &&
                 correctColDiff === actualColDiff
               ) {
-                // MERGE: Absorb neighbor's group into dragged group
-                const targetToEatGroupId = neighborPiece.groupId;
-                Object.values(pieces).forEach((v) => {
-                  if (v.groupId === targetToEatGroupId) {
-                    pieces[v.id] = {
-                      ...pieces[v.id],
-                      groupId: draggedGroupId,
-                      zIndex: newMaxZIndex,
-                    };
-                  }
+                // MERGE: Absorb interactions
+                const targetGroupId = neighborPiece.groupId;
+
+                members.forEach((m) => {
+                  pieces[m.id] = { ...pieces[m.id], groupId: targetGroupId };
                 });
+
                 didMerge = true;
-                mergePass = true; // Continue checking for more merges
+                mergedThisRound = true;
+
+                // The 'currentGroupId' is now gone.
+                // The 'targetGroupId' has grown. It might bridge to something else!
+                // Add targetGroupId to queue to re-check it.
+                queue.push(targetGroupId);
+                break; // Break inner loop (neighbors)
               }
             }
           }
+          if (mergedThisRound) break; // Break members loop
+        }
+
+        if (!mergedThisRound) {
+          processedGroups.add(currentGroupId);
         }
       }
 
@@ -469,10 +473,14 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
       const uniqueGroups = new Set(Object.values(pieces).map((p) => p.groupId));
       const status = uniqueGroups.size === 1 ? "won" : "playing";
 
+      // Increment move count
+      const newMoves = get().moves + 1;
+
       set({
         pieces,
         maxZIndex: newMaxZIndex,
         status,
+        moves: newMoves,
       });
 
       return { merged: didMerge };

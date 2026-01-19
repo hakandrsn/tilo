@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
   bannerContainer: {
     width: "100%",
     alignItems: "center",
-    backgroundColor: "#000",
+    borderTopWidth: 1,
   },
 });
 

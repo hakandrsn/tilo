@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { DotLottie } from "@lottiefiles/dotlottie-react-native";
 import { Image } from "expo-image";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
@@ -15,22 +16,22 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Stores & Hooks
-import { COLORS } from "@/src/constants/gameConfig";
+import { calculateStars, COLORS } from "@/src/constants/gameConfig";
 import { useJigsawStore } from "@/src/modules/jigsaw/jigsawStore";
 import { useAdStore } from "@/src/store/adStore";
 import { useDataActions } from "@/src/store/dataStore";
-import { Level } from "@/src/types";
 
 // Components
 import GameBannerAd from "@/src/components/GameBannerAd";
 import GameSettingsMenu from "@/src/components/GameSettingsMenu";
 import JigsawBoard from "@/src/modules/jigsaw/JigsawBoard";
+import { useProgressActions } from "@/src/store/progressStore";
+import { Level } from "@/src/types";
 
 export default function JigsawGameScreen() {
   const router = useRouter();
@@ -43,8 +44,10 @@ export default function JigsawGameScreen() {
   }>();
 
   const { getLevelById, getChapters } = useDataActions();
+  const { completeLevel } = useProgressActions();
   const resetGame = useJigsawStore((state) => state.actions.resetGame);
   const status = useJigsawStore((state) => state.status);
+  const moves = useJigsawStore((state) => state.moves); // Get moves
   const canShowBanner = useAdStore((state) => state.actions.canShowBanner);
 
   const [level, setLevel] = useState<Level | undefined>();
@@ -54,9 +57,17 @@ export default function JigsawGameScreen() {
   const [showContinue, setShowContinue] = useState(false);
 
   // Win Animation SharedValues
+  // Win Animation SharedValues
   const headerTranslateY = useSharedValue(0);
+  const movesTranslateY = useSharedValue(0); // Moves Text moves UP
+  const star1Scale = useSharedValue(0);
+  const star2Scale = useSharedValue(0);
+  const star3Scale = useSharedValue(0);
   const boardScale = useSharedValue(1);
-  const continueButtonTranslateY = useSharedValue(100); // Start off-screen
+  const boardTranslateY = useSharedValue(0); // Move board up to make room
+  const continueButtonScale = useSharedValue(0); // Scale from 0 to 1
+
+  const [earnedStars, setEarnedStars] = useState(0);
 
   // Initialize Data
   useEffect(() => {
@@ -68,18 +79,11 @@ export default function JigsawGameScreen() {
     };
     initData();
   }, [chapterId, levelId]);
-
-  // Clean on unmount
   useEffect(() => {
-    return () => {
-      resetGame();
-    };
-  }, []);
+    if (status === "won" && level) {
+      // 0. Save Progress
+      completeLevel(Number(chapterId), Number(levelId), moves, level.gridSize);
 
-  // Win Animation Sequence
-  // Win Animation Sequence & Prefetch
-  useEffect(() => {
-    if (status === "won") {
       // 1. Trigger background prefetch for next level image
       const prefetchNextLevel = async () => {
         try {
@@ -107,19 +111,39 @@ export default function JigsawGameScreen() {
       prefetchNextLevel();
 
       // Delay before starting win sequence
+      // Delay before starting win sequence
       const timer = setTimeout(() => {
-        // 2. Header slides up
+        if (!level) return;
+        // Calculate stars
+        const stars = calculateStars(moves, level.gridSize);
+        setEarnedStars(stars);
+
+        // 2. Header slides up (Hide header)
         headerTranslateY.value = withTiming(-100, { duration: 400 });
 
-        // 3. Board scales down (perspective effect)
-        boardScale.value = withTiming(0.85, { duration: 500 });
+        // 3. Moves Text slides UP (less aggressive)
+        movesTranslateY.value = withTiming(-30, { duration: 500 });
 
-        // 4. Show continue button (slides up after delay)
-        setShowContinue(true);
-        continueButtonTranslateY.value = withDelay(
-          300,
-          withTiming(0, { duration: 400 }),
-        );
+        // 4. Board scales down & moves up
+        boardScale.value = withTiming(0.85, { duration: 500 });
+        boardTranslateY.value = withTiming(-60, { duration: 500 });
+
+        // 5. Stars Animation (Sequential, simple scale, no bounce)
+        setTimeout(() => {
+          star1Scale.value = withTiming(1, { duration: 300 });
+        }, 400);
+        setTimeout(() => {
+          star2Scale.value = withTiming(1, { duration: 300 });
+        }, 600);
+        setTimeout(() => {
+          star3Scale.value = withTiming(1, { duration: 300 });
+        }, 800);
+
+        // 6. Show continue button (Scale in, no bounce)
+        setTimeout(() => {
+          setShowContinue(true);
+          continueButtonScale.value = withTiming(1, { duration: 400 });
+        }, 1200);
       }, 800);
       return () => clearTimeout(timer);
     }
@@ -138,7 +162,8 @@ export default function JigsawGameScreen() {
     // Reset animations
     headerTranslateY.value = 0;
     boardScale.value = 1;
-    continueButtonTranslateY.value = 100;
+    boardTranslateY.value = 0;
+    continueButtonScale.value = 0;
     setShowContinue(false);
 
     resetGame();
@@ -152,12 +177,29 @@ export default function JigsawGameScreen() {
     transform: [{ translateY: headerTranslateY.value }],
   }));
 
+  const movesAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: movesTranslateY.value }],
+  }));
+
+  const star1Style = useAnimatedStyle(() => ({
+    transform: [{ scale: star1Scale.value }],
+  }));
+  const star2Style = useAnimatedStyle(() => ({
+    transform: [{ scale: star2Scale.value }],
+  }));
+  const star3Style = useAnimatedStyle(() => ({
+    transform: [{ scale: star3Scale.value }],
+  }));
+
   const boardAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: boardScale.value }],
+    transform: [
+      { scale: boardScale.value },
+      { translateY: boardTranslateY.value },
+    ],
   }));
 
   const continueButtonStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: continueButtonTranslateY.value }],
+    transform: [{ scale: continueButtonScale.value }],
   }));
 
   if (isLoading || !level) {
@@ -170,22 +212,23 @@ export default function JigsawGameScreen() {
 
   // Layout Calculations
   const HEADER_HEIGHT = 60;
+  const MOVES_HEIGHT = 80; // Enough space for "32" font + label + margins
   const BANNER_HEIGHT = canShowBanner() ? 60 : 0; // Approximate banner height
 
   // Total top inset including status bar, header
   const topInset = insets.top;
-  const contentTopStart = topInset + HEADER_HEIGHT;
+
+  // Where the Board starts (below Header AND Moves)
+  const contentTopStart = topInset + HEADER_HEIGHT + MOVES_HEIGHT;
 
   // Available height for the board
-  // Board sits between Header and Bottom functionality.
-  // We need to account for insets.bottom OR Banner height, whichever implies the visual bottom logic.
-  // If banner is at bottom 0, it covers insets.bottom.
-  // So we reserve strictly the max of (insets.bottom, BANNER_HEIGHT) or just BANNER_HEIGHT involved?
-  // User said "inset dışına tam sıfır", implying banner is at strictly 0.
-  // For usability, the board shouldn't be covered.
-  // I will subtract BANNER_HEIGHT + a small padding maybe?
-  // Let's assume banner is ON TOP of the bottom area.
+  // Board sits between Header+Moves and Bottom functionality.
+  // Banner is at strictly Bottom 0.
+  // We need to ensure we don't draw under the banner.
+  // If Banner exists, we reserve BANNER_HEIGHT space at bottom.
+  // If no banner, we reserve insets.bottom.
   const bottomSpace = canShowBanner() ? BANNER_HEIGHT : insets.bottom;
+
   const boardHeight = height - contentTopStart - bottomSpace;
 
   return (
@@ -193,6 +236,18 @@ export default function JigsawGameScreen() {
       style={{ flex: 1, backgroundColor: COLORS.background }}
     >
       <Stack.Screen options={{ headerShown: false }} />
+
+      {/* CONFETTI - Behind everything */}
+      {status === "won" && (
+        <View style={styles.confettiContainer} pointerEvents="none">
+          <DotLottie
+            source={require("@/src/assets/animations/confettie.lottie")}
+            style={{ flex: 1 }}
+            autoplay
+            loop={false}
+          />
+        </View>
+      )}
 
       {/* HEADER - Animated for win sequence */}
       <Animated.View
@@ -219,25 +274,20 @@ export default function JigsawGameScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Center: Title */}
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {level.name || `Level ${levelId}`}
-        </Text>
+        {/* Center: Title Only */}
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {level.name || `Level ${levelId}`}
+          </Text>
+        </View>
 
         {/* Right: Settings (and Preview) */}
         <View style={styles.headerRightGroups}>
-          {/* Keeping Preview but making it smaller/secondary or just icon? 
-              User didn't strictly say remove it, but focused on Settings. 
-              I'll keep it as an icon button to save space if needed, 
-              or keep thumbnail if it fits. Thumbnail is nice. 
-              Let's keep thumbnail but add settings to its right. 
-          */}
+          {/* ... existing right buttons ... */}
           <TouchableOpacity
             onPress={() => setShowPreview(true)}
             style={styles.headerBtn}
           >
-            {/* Making thumbnail slightly smaller or just icon? 
-               Thumbnail is 32x32. It's fine. */}
             <Image
               source={level.imageSource}
               style={styles.thumbnail}
@@ -258,14 +308,57 @@ export default function JigsawGameScreen() {
         </View>
       </Animated.View>
 
+      {/* MOVES DISPLAY & STARS CONTAINER */}
+      {/* Positioned just below header initially, moves UP when won */}
+      <View
+        style={[
+          styles.statsContainer,
+          {
+            top: topInset + HEADER_HEIGHT,
+            height: MOVES_HEIGHT,
+          },
+        ]}
+      >
+        <Animated.View style={[styles.movesBlock, movesAnimatedStyle]}>
+          <Text style={styles.movesValueBig}>{moves}</Text>
+          <Text style={styles.movesLabelSmall}>HAMLE</Text>
+        </Animated.View>
+
+        {/* STARS - Visible only when animating/won (controlled by scale) */}
+        <View style={styles.starsRow}>
+          <Animated.View style={star1Style}>
+            <Ionicons
+              name="star"
+              size={48}
+              color={earnedStars >= 1 ? COLORS.starFilled : COLORS.starEmpty}
+            />
+          </Animated.View>
+          <Animated.View style={[star2Style, { marginTop: -20 }]}>
+            <Ionicons
+              name="star"
+              size={64} // Middle star bigger
+              color={earnedStars >= 2 ? COLORS.starFilled : COLORS.starEmpty}
+            />
+          </Animated.View>
+          <Animated.View style={star3Style}>
+            <Ionicons
+              name="star"
+              size={48}
+              color={earnedStars >= 3 ? COLORS.starFilled : COLORS.starEmpty}
+            />
+          </Animated.View>
+        </View>
+      </View>
+
       {/* GAME BOARD - Animated for win sequence */}
       <Animated.View
         style={[
           styles.gameArea,
           {
+            // Push board down to clear Header + Moves
             marginTop: contentTopStart,
-            height: boardHeight,
-            marginBottom: insets.bottom,
+            height: boardHeight, // Precise calculated height
+            marginBottom: 0, // We handled bottomSpace in height calc
           },
           boardAnimatedStyle,
         ]}
@@ -308,7 +401,7 @@ export default function JigsawGameScreen() {
             style={styles.continueButton}
             onPress={handleNextLevel}
           >
-            <Text style={styles.continueText}>Continue</Text>
+            <Text style={styles.continueText}>DEVAM</Text>
             <Ionicons name="arrow-forward" size={20} color="white" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.replayButton} onPress={handleReplay}>
@@ -324,12 +417,9 @@ export default function JigsawGameScreen() {
         onClose={() => setShowSettings(false)}
       />
 
-      {/* BOTTOM BANNER AD */}
-      {canShowBanner() && (
-        <View style={styles.bottomBanner}>
-          <GameBannerAd />
-        </View>
-      )}
+      <View style={styles.bottomBanner}>
+        <GameBannerAd />
+      </View>
     </GestureHandlerRootView>
   );
 }
@@ -387,12 +477,12 @@ const styles = StyleSheet.create({
   },
   gameArea: {
     width: "100%",
-    backgroundColor: COLORS.background,
+    backgroundColor: "transparent",
     overflow: "hidden",
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.85)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -408,7 +498,7 @@ const styles = StyleSheet.create({
   },
   continueContainer: {
     position: "absolute",
-    bottom: 40,
+    bottom: 80, // Moved up from 40
     left: 0,
     right: 0,
     alignItems: "center",
@@ -422,11 +512,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 16,
     borderRadius: 30,
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
   },
   continueText: {
     color: COLORS.textPrimary,
@@ -450,7 +535,48 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: "center",
-    zIndex: 999, // On top of board
-    backgroundColor: "transparent", // Ad component handles bg
+    zIndex: 999,
+    backgroundColor: "transparent",
+  },
+  statsContainer: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 95, // Below header (zIndex 100) but above board
+    pointerEvents: "none", // Let touches pass through to board if needed?
+    // Wait, moves is info. zIndex 95.
+  },
+  movesBlock: {
+    alignItems: "center",
+  },
+  movesValueBig: {
+    fontSize: 32,
+    fontWeight: "800",
+    color: COLORS.textPrimary,
+    textShadowColor: "rgba(0,0,0,0.1)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  movesLabelSmall: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: COLORS.textSecondary, // "bg felan olmasın" -> transparent bg, ensuring text is visible
+    marginTop: -2,
+    letterSpacing: 1,
+  },
+  starsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2, // Tighter gap
+    marginTop: 8, // Less space between moves and stars
+  },
+  headerCenter: {
+    alignItems: "center",
+  },
+  confettiContainer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
   },
 });

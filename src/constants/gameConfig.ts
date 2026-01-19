@@ -155,29 +155,23 @@ export const STORAGE_KEYS = {
 // STAR RATING SYSTEM (Difficulty Based)
 // ==========================================
 
-export const STAR_THRESHOLDS: Record<string, { gold: number; silver: number }> =
-  {
-    // Vertical grids (N x N+1)
-    "1x2": { gold: 1, silver: 2 }, // 2 tiles
-    "2x3": { gold: 15, silver: 30 }, // 6 tiles
-    "3x4": { gold: 30, silver: 60 }, // 12 tiles
-    "4x5": { gold: 60, silver: 120 }, // 20 tiles
-    "5x6": { gold: 90, silver: 180 }, // 30 tiles
-    "6x7": { gold: 120, silver: 240 }, // 42 tiles
-    "7x8": { gold: 150, silver: 300 }, // 56 tiles
-    "8x9": { gold: 180, silver: 360 }, // 72 tiles
-    "9x10": { gold: 210, silver: 420 }, // 90 tiles
-    "10x11": { gold: 240, silver: 480 }, // 110 tiles
-  };
+// ==========================================
+// STAR RATING SYSTEM (Dynamic Difficulty)
+// ==========================================
 
 export const calculateStars = (moves: number, gridSize: GridSize): number => {
-  const key = `${gridSize.cols}x${gridSize.rows}`;
-  const threshold = STAR_THRESHOLDS[key] || {
-    gold: gridSize.cols * gridSize.rows * 4,
-    silver: gridSize.cols * gridSize.rows * 6,
-  };
+  // Ideal moves = Number of pieces (assuming 1 drag per piece)
+  const idealMoves = gridSize.cols * gridSize.rows;
 
-  if (moves <= threshold.gold) return 3;
-  if (moves <= threshold.silver) return 2;
+  // Penalty Step = Minimum dimension of the grid (e.g. 3 for 3x4)
+  const step = Math.min(gridSize.cols, gridSize.rows);
+
+  // Logic:
+  // Moves <= Ideal -> 3 Stars
+  // Moves <= Ideal + Step -> 2 Stars
+  // Moves > Ideal + Step -> 1 Star
+
+  if (moves <= idealMoves) return 3;
+  if (moves <= idealMoves + step) return 2;
   return 1;
 };

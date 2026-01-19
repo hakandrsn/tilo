@@ -54,7 +54,7 @@ const JigsawPiece: React.FC<JigsawPieceProps> = ({
   const targetX = piece.currentCol * pieceWidth;
   const targetY = piece.currentRow * pieceHeight;
 
-  // Visual Position Override (for animation compensation)
+  // Visual Position Override (Restored for smoothness)
   // We use this to "offset" the piece when the grid position changes,
   // so it doesn't jump, then handle the slide.
   const visualOffsetX = useSharedValue(0);
@@ -64,23 +64,17 @@ const JigsawPiece: React.FC<JigsawPieceProps> = ({
   const prevTarget = useRef({ x: targetX, y: targetY });
 
   useEffect(() => {
-    // Detect Jump
+    // Detect Grid Jump
     const diffX = targetX - prevTarget.current.x;
     const diffY = targetY - prevTarget.current.y;
 
     if (Math.abs(diffX) > 0.1 || Math.abs(diffY) > 0.1) {
       // The grid position moved.
-      // We want to visually stay where we were (prevTarget).
-      // current visual = (targetX) + visualOffset + (dragTranslation if dragging).
-      // We want: (targetX + newOffset) == (prevTarget + oldOffset).
-      // newOffset = prevTarget - targetX + oldOffset.
-      // simpler: newOffset = -diffX + oldOffset.
-
+      // We visually stay where we were by subtracting the diff
       visualOffsetX.value = visualOffsetX.value - diffX;
       visualOffsetY.value = visualOffsetY.value - diffY;
 
-      // Now animate the offset back to 0 (sliding the piece to the new target)
-      // "asla render olmamalı" -> smooth transitions
+      // Then slide smoothly to 0
       visualOffsetX.value = withTiming(0, { duration: 300 });
       visualOffsetY.value = withTiming(0, { duration: 300 });
     }
@@ -88,22 +82,17 @@ const JigsawPiece: React.FC<JigsawPieceProps> = ({
     prevTarget.current = { x: targetX, y: targetY };
   }, [targetX, targetY]);
 
-  // Fix: Detect Merge Jump
-  // When a stationary piece gets merged into the dragged group, it suddenly inherits 'dragTranslation'.
-  // We must compensate for this jump so it feels like it "picked up" smoothly rather than teleporting.
+  // Merge Jump Compensation
+  // When merged into a dragging group, prevent visual teleport
   const prevGroupId = useRef(piece.groupId);
   useEffect(() => {
-    // If our groupId changed...
     if (piece.groupId !== prevGroupId.current) {
-      // ...and we are now part of the dragged group
       if (draggedGroupId.value === piece.groupId) {
-        // We just got merged INTO the active drag!
-        // Our visual position is about to jump by `dragTranslation`.
-        // We counteract this by subtracting `dragTranslation` from our visual offset.
+        // We joined the drag group. Compensate for the dragTranslation inheritance.
         visualOffsetX.value -= dragTranslation.value.x;
         visualOffsetY.value -= dragTranslation.value.y;
 
-        // Then slide to the correct relative position (snap)
+        // Slide into place
         visualOffsetX.value = withTiming(0, { duration: 300 });
         visualOffsetY.value = withTiming(0, { duration: 300 });
       }
@@ -163,13 +152,13 @@ const JigsawPiece: React.FC<JigsawPieceProps> = ({
       onDragStart,
       onDragEnd,
       isGameOver,
-      pieceWidth, // Added dependency
-      pieceHeight, // Added dependency
+      pieceWidth,
+      pieceHeight,
     ],
   );
 
-  const PIECE_GAP = 0.3; // Reduced gap per user request
-  const DRAG_SCALE = 1.05; // Scale up when dragging
+  const PIECE_GAP = isGameOver ? 0 : 0.3; // Remove gap when won
+  const DRAG_SCALE = 1.05;
 
   const style = useAnimatedStyle(() => {
     const isDraggingMe = draggedGroupId.value === piece.groupId;
@@ -186,38 +175,21 @@ const JigsawPiece: React.FC<JigsawPieceProps> = ({
       transform: [
         { translateX: targetX + visualOffsetX.value + tx },
         { translateY: targetY + visualOffsetY.value + ty },
-        { scale },
+        { scale }, // Only scale when dragging, not on merge
       ],
       zIndex: isDraggingMe ? 9999 : piece.zIndex,
     };
   });
 
-  // Animated expansion values for smooth merge transition
+  // Animated expansion values
   const expandTop = useSharedValue(hasNeighborTop ? PIECE_GAP : 0);
   const expandBottom = useSharedValue(hasNeighborBottom ? PIECE_GAP : 0);
   const expandLeft = useSharedValue(hasNeighborLeft ? PIECE_GAP : 0);
   const expandRight = useSharedValue(hasNeighborRight ? PIECE_GAP : 0);
 
-  // ... (useEffect for expand values remains same, skipped in replacement context if possible or need to include)
-  // Wait, I need to match the target content exactly. The block includes definitions up to `expandRight`.
-  // I will just replace the `style` definition and `PIECE_GAP` definition block.
-  // BUT I also need to update `innerStyle` which is further down passed the `useEffect`.
-  // I should use `multi_replace` or two calls. Let's use `multi_replace` for JigsawPiece as well.
+  const mergeScale = useSharedValue(1); // Standard scale, no bounce
 
-  // Actually, I can replace the whole `PIECE_GAP` ... `expandRight` block first.
-
-  // And then replace `innerStyle` block.
-
-  // Merge scale animation (pop effect)
-  const mergeScale = useSharedValue(1);
-  const prevNeighborCount = useRef(
-    (hasNeighborTop ? 1 : 0) +
-      (hasNeighborBottom ? 1 : 0) +
-      (hasNeighborLeft ? 1 : 0) +
-      (hasNeighborRight ? 1 : 0),
-  );
-
-  // PERFORMANCE: Consolidated single useEffect for all expansion animations
+  // Single Effect for Expansion Animations
   useEffect(() => {
     const MERGE_DURATION = 200;
     expandTop.value = withTiming(hasNeighborTop ? PIECE_GAP : 0, {
@@ -233,23 +205,20 @@ const JigsawPiece: React.FC<JigsawPieceProps> = ({
       duration: MERGE_DURATION,
     });
 
-    // Check if we GAINED neighbors (merge happened)
-    const currentCount =
-      (hasNeighborTop ? 1 : 0) +
-      (hasNeighborBottom ? 1 : 0) +
-      (hasNeighborLeft ? 1 : 0) +
-      (hasNeighborRight ? 1 : 0);
-    if (currentCount > prevNeighborCount.current) {
-      // Pop animation: scale up then back to normal
-      mergeScale.value = withTiming(1.08, { duration: 100 }, () => {
-        mergeScale.value = withTiming(1, { duration: 150 });
-      });
-    }
-    prevNeighborCount.current = currentCount;
-  }, [hasNeighborTop, hasNeighborBottom, hasNeighborLeft, hasNeighborRight]);
+    // NO mergeScale bounce animation here.
+  }, [
+    hasNeighborTop,
+    hasNeighborBottom,
+    hasNeighborLeft,
+    hasNeighborRight,
+    PIECE_GAP,
+  ]);
 
-  // SINGLE CONTAINER (White Border 2, Radius 4)
+  // SINGLE CONTAINER
   const pieceStyle = useAnimatedStyle(() => {
+    // Use derived value or just re-calc since isGameOver triggers re-render
+    const borderW = isGameOver ? 0 : 2;
+
     return {
       position: "absolute" as const,
       top: PIECE_GAP - expandTop.value,
@@ -258,17 +227,20 @@ const JigsawPiece: React.FC<JigsawPieceProps> = ({
       height:
         pieceHeight - PIECE_GAP * 2 + expandTop.value + expandBottom.value,
 
-      borderTopWidth: expandTop.value > 0 ? 0 : 2,
-      borderBottomWidth: expandBottom.value > 0 ? 0 : 2,
-      borderLeftWidth: expandLeft.value > 0 ? 0 : 2,
-      borderRightWidth: expandRight.value > 0 ? 0 : 2,
+      borderTopWidth: expandTop.value > 0 ? 0 : borderW,
+      borderBottomWidth: expandBottom.value > 0 ? 0 : borderW,
+      borderLeftWidth: expandLeft.value > 0 ? 0 : borderW,
+      borderRightWidth: expandRight.value > 0 ? 0 : borderW,
       borderColor: "#ffffff",
 
-      // Smart Corner Radius: Only round corners that are NOT connected
-      borderTopLeftRadius: hasNeighborTop || hasNeighborLeft ? 0 : 4,
-      borderTopRightRadius: hasNeighborTop || hasNeighborRight ? 0 : 4,
-      borderBottomLeftRadius: hasNeighborBottom || hasNeighborLeft ? 0 : 4,
-      borderBottomRightRadius: hasNeighborBottom || hasNeighborRight ? 0 : 4,
+      borderTopLeftRadius:
+        hasNeighborTop || hasNeighborLeft || isGameOver ? 0 : 4,
+      borderTopRightRadius:
+        hasNeighborTop || hasNeighborRight || isGameOver ? 0 : 4,
+      borderBottomLeftRadius:
+        hasNeighborBottom || hasNeighborLeft || isGameOver ? 0 : 4,
+      borderBottomRightRadius:
+        hasNeighborBottom || hasNeighborRight || isGameOver ? 0 : 4,
 
       overflow: "hidden" as const,
       transform: [{ scale: mergeScale.value }],

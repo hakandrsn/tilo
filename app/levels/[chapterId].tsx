@@ -16,10 +16,7 @@ import {
   getResponsiveValue,
 } from "../../src/constants/gameConfig";
 import { useDataActions, useIsDataLoading } from "../../src/store/dataStore";
-import {
-  useProgressActions,
-  useProgressStore,
-} from "../../src/store/progressStore";
+import { useProgressActions } from "../../src/store/progressStore";
 import { Level, LevelProgress } from "../../src/types";
 
 interface LevelCardProps {
@@ -35,6 +32,7 @@ interface LevelCardProps {
 import { Image } from "expo-image"; // Ensure this is imported at top of file
 
 import { Ionicons } from "@expo/vector-icons"; // Add this import at the top if missing, I will check effectively by deducing or adding it.
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // ... existing imports
 
@@ -121,9 +119,7 @@ export default function LevelsScreen() {
   const { width } = useWindowDimensions();
   const { chapterId } = useLocalSearchParams<{ chapterId: string }>();
   const progressActions = useProgressActions();
-
-  // Subscribe to progress changes for real-time updates
-  const progress = useProgressStore((state) => state.progress);
+  const { top } = useSafeAreaInsets();
 
   const { getLevels, getChapterById } = useDataActions();
   const isLoading = useIsDataLoading();
@@ -177,9 +173,10 @@ export default function LevelsScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: top }]}>
       <Stack.Screen
         options={{
+          headerShown: false,
           title: chapter.name,
           headerStyle: { backgroundColor: COLORS.background },
           headerTintColor: COLORS.textPrimary,
@@ -190,10 +187,18 @@ export default function LevelsScreen() {
       {/* Header Info (Aesthetics Update) */}
       <View style={styles.headerInfoArea}>
         <View style={styles.headerTop}>
-          <View
-            style={[styles.chapterBadge, { backgroundColor: COLORS.surface }]}
-          >
-            <Text style={styles.chapterBadgeText}>{chapter.id}</Text>
+          <View>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.backButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name="chevron-back-sharp"
+                size={24}
+                color={COLORS.textPrimary}
+              />
+            </TouchableOpacity>
           </View>
           <View style={styles.headerTitles}>
             <Text style={styles.headerTitle}>{chapter.name}</Text>
@@ -390,5 +395,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.3,
     shadowRadius: 1,
+  },
+  backButton: {
+    height: 50,
+    width: 50,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
