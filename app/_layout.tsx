@@ -16,8 +16,6 @@ import { getDeviceId } from "../src/services/deviceService";
 import { useAdActions } from "../src/store/adStore";
 import { useProgressActions } from "../src/store/progressStore";
 
-const __DEV_MODE__ = true;
-
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -51,6 +49,12 @@ export default function RootLayout() {
         // THEN load progress (which needs auth.currentUser to fetch cloud data)
         await progressActions.loadProgress();
         await adActions.loadAdState();
+
+        // Load Game Data (Chapters)
+        const { getChapters } = await import("../src/store/dataStore").then(
+          (m) => m.useDataStore.getState().actions,
+        );
+        await getChapters();
 
         try {
           initializeAds();
@@ -115,7 +119,7 @@ export default function RootLayout() {
               headerShadowVisible: false,
             }}
           />
-          {__DEV_MODE__ && <DevPanel />}
+          {__DEV__ && <DevPanel />}
         </View>
       </PersistQueryClientProvider>
     </SafeAreaProvider>

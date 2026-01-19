@@ -21,7 +21,12 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Stores & Hooks
-import { calculateStars, COLORS } from "@/src/constants/gameConfig";
+import {
+  calculateStars,
+  COLORS,
+  LEVELS_PER_CHAPTER,
+  TOTAL_CHAPTERS,
+} from "@/src/constants/gameConfig";
 import { useJigsawStore } from "@/src/modules/jigsaw/jigsawStore";
 import { useAdStore } from "@/src/store/adStore";
 import { useDataActions } from "@/src/store/dataStore";
@@ -30,6 +35,7 @@ import { useDataActions } from "@/src/store/dataStore";
 import GameBannerAd from "@/src/components/GameBannerAd";
 import GameSettingsMenu from "@/src/components/GameSettingsMenu";
 import JigsawBoard from "@/src/modules/jigsaw/JigsawBoard";
+import { showInterstitial } from "@/src/services/adManager";
 import { useProgressActions } from "@/src/store/progressStore";
 import { Level } from "@/src/types";
 
@@ -38,97 +44,115 @@ export default function JigsawGameScreen() {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
-  const { chapterId, levelId } = useLocalSearchParams<{
+  const params = useLocalSearchParams<{
     chapterId: string;
     levelId: string;
   }>();
 
+  // Local state for infinite scrolling
+  const [currentChapter, setCurrentChapter] = useState(
+    Number(params.chapterId),
+  );
+  const [currentLevelId, setCurrentLevelId] = useState(Number(params.levelId));
+
   const { getLevelById, getChapters } = useDataActions();
-  const { completeLevel } = useProgressActions();
+  const { completeLevel, setLastPlayed } = useProgressActions();
   const resetGame = useJigsawStore((state) => state.actions.resetGame);
   const status = useJigsawStore((state) => state.status);
-  const moves = useJigsawStore((state) => state.moves); // Get moves
+  const moves = useJigsawStore((state) => state.moves);
+  const isInitialized = useJigsawStore((state) => state.isInitialized);
+  const initializeLevel = useJigsawStore(
+    (state) => state.actions.initializeLevel,
+  );
   const canShowBanner = useAdStore((state) => state.actions.canShowBanner);
 
   const [level, setLevel] = useState<Level | undefined>();
+  const [prevLevel, setPrevLevel] = useState<Level | undefined>(); // For visual transition
   const [isLoading, setIsLoading] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showContinue, setShowContinue] = useState(false);
 
-  // Win Animation SharedValues
+  // Vertical Scroll Transition
+  const scrollTranslateY = useSharedValue(0);
+
   // Win Animation SharedValues
   const headerTranslateY = useSharedValue(0);
-  const movesTranslateY = useSharedValue(0); // Moves Text moves UP
+  const movesTranslateY = useSharedValue(0);
   const star1Scale = useSharedValue(0);
   const star2Scale = useSharedValue(0);
   const star3Scale = useSharedValue(0);
   const boardScale = useSharedValue(1);
-  const boardTranslateY = useSharedValue(0); // Move board up to make room
-  const continueButtonScale = useSharedValue(0); // Scale from 0 to 1
+  const boardTranslateY = useSharedValue(0);
+  const continueButtonScale = useSharedValue(0);
 
   const [earnedStars, setEarnedStars] = useState(0);
 
-  // Initialize Data
+  // Initialize Data (Initial Load)
   useEffect(() => {
     const initData = async () => {
       await getChapters();
-      const l = await getLevelById(Number(chapterId), Number(levelId));
-      setLevel(l);
-      setIsLoading(false);
+      loadLevel(currentChapter, currentLevelId);
     };
     initData();
-  }, [chapterId, levelId]);
+  }, []);
+
+  const loadLevel = async (chapId: number, lvlId: number) => {
+    setIsLoading(true);
+    const l = await getLevelById(chapId, lvlId);
+    if (l) {
+      // Initialize game logic BEFORE hiding loader
+      initializeLevel(l.gridSize);
+      // Save as last played immediately when entering logic
+      setLastPlayed(chapId, lvlId);
+    }
+    setLevel(l);
+    setIsLoading(false);
+  };
+
   useEffect(() => {
     if (status === "won" && level) {
-      // 0. Save Progress
-      completeLevel(Number(chapterId), Number(levelId), moves, level.gridSize);
+      // NOTE: Progress is NOT saved here anymore!
+      // It will be saved in handleNextLevel AFTER the ad is watched
 
       // 1. Trigger background prefetch for next level image
       const prefetchNextLevel = async () => {
         try {
-          // Calculate next level ID
-          // (Assuming simple progression: level X -> level X+1 in same chapter)
-          // TODO: Handle Chapter transition logic if needed (e.g. if levelId == LEVELS_PER_CHAPTER)
-          const nextLvlId = Number(levelId) + 1;
-          const nextLvl = await getLevelById(Number(chapterId), nextLvlId);
+          const cLvl = currentLevelId;
+          const cChap = currentChapter;
+          let nextChapter = cChap;
+          let nextLevel = cLvl + 1;
+
+          if (nextLevel > LEVELS_PER_CHAPTER) {
+            nextChapter++;
+            nextLevel = 1;
+          }
+          if (nextChapter > TOTAL_CHAPTERS) return;
+
+          const nextLvl = await getLevelById(nextChapter, nextLevel);
 
           if (nextLvl?.imageSource) {
-            // Check if it's a remote URI or local require
             const source = nextLvl.imageSource;
             if (typeof source === "object" && "uri" in source && source.uri) {
-              console.log("🚀 Prefetching next level image:", source.uri);
               await Image.prefetch(source.uri);
-            } else {
-              // Local assets don't strictly need prefetch but standard Image.prefetch usually handles uris.
-              // For require() assets, they are bundled.
             }
           }
-        } catch (e) {
-          console.warn("Prefetch failed:", e);
-        }
+        } catch (e) {}
       };
       prefetchNextLevel();
 
       // Delay before starting win sequence
-      // Delay before starting win sequence
       const timer = setTimeout(() => {
-        if (!level) return;
         // Calculate stars
         const stars = calculateStars(moves, level.gridSize);
         setEarnedStars(stars);
 
-        // 2. Header slides up (Hide header)
+        // Animations - board moves DOWN on win
         headerTranslateY.value = withTiming(-100, { duration: 400 });
-
-        // 3. Moves Text slides UP (less aggressive)
         movesTranslateY.value = withTiming(-30, { duration: 500 });
-
-        // 4. Board scales down & moves up
         boardScale.value = withTiming(0.85, { duration: 500 });
-        boardTranslateY.value = withTiming(-60, { duration: 500 });
+        boardTranslateY.value = withTiming(-20, { duration: 500 }); // Move DOWN
 
-        // 5. Stars Animation (Sequential, simple scale, no bounce)
         setTimeout(() => {
           star1Scale.value = withTiming(1, { duration: 300 });
         }, 400);
@@ -139,7 +163,6 @@ export default function JigsawGameScreen() {
           star3Scale.value = withTiming(1, { duration: 300 });
         }, 800);
 
-        // 6. Show continue button (Scale in, no bounce)
         setTimeout(() => {
           setShowContinue(true);
           continueButtonScale.value = withTiming(1, { duration: 400 });
@@ -153,34 +176,112 @@ export default function JigsawGameScreen() {
     router.back();
   };
 
-  const handleNextLevel = () => {
-    const nextLevelId = Number(levelId) + 1;
-    router.replace(`/game/jigsaw/${chapterId}/${nextLevelId}`);
+  const handleNextLevel = async () => {
+    if (!level) return;
+
+    // 1. Determine Next Level IDs
+    let nextChapter = currentChapter;
+    let nextLevelId = currentLevelId + 1;
+
+    if (nextLevelId > LEVELS_PER_CHAPTER) {
+      nextChapter++;
+      nextLevelId = 1;
+    }
+
+    if (nextChapter > TOTAL_CHAPTERS) {
+      // Last level - save progress and go back
+      completeLevel(currentChapter, currentLevelId, moves, level.gridSize);
+      router.back();
+      return;
+    }
+
+    // 2. Save progress FIRST (level completed)
+    completeLevel(currentChapter, currentLevelId, moves, level.gridSize);
+
+    // 3. Start preparing next level data in BACKGROUND
+    const nextLevelPromise = getLevelById(nextChapter, nextLevelId);
+
+    // 4. Show Interstitial Ad - wait for it to CLOSE
+    const adWatched = await showInterstitial();
+
+    if (!adWatched) {
+      // Ad failed - still continue (progress already saved)
+      console.log("Ad not shown, continuing anyway");
+    }
+
+    // 5. Get next level data (should be ready from background fetch)
+    const nextLvlData = await nextLevelPromise;
+
+    if (!nextLvlData) {
+      setIsLoading(false);
+      return;
+    }
+
+    // 6. Now do the transition - AD IS CLOSED, game will start fresh
+    setPrevLevel(level);
+    scrollTranslateY.value = withTiming(-height, { duration: 500 });
+
+    // 7. Reset Win UI
+    setShowContinue(false);
+    setEarnedStars(0);
+    headerTranslateY.value = 0;
+    movesTranslateY.value = 0;
+    boardScale.value = 1;
+    boardTranslateY.value = 0;
+    continueButtonScale.value = 0;
+    star1Scale.value = 0;
+    star2Scale.value = 0;
+    star3Scale.value = 0;
+
+    // 8. Initialize new level - board will remount with key change
+    resetGame();
+    initializeLevel(nextLvlData.gridSize);
+    setLevel(nextLvlData);
+    setCurrentChapter(nextChapter);
+    setCurrentLevelId(nextLevelId);
+    // Update last played for the new level
+    setLastPlayed(nextChapter, nextLevelId);
+
+    // 9. Clean up after scroll completes
+    setTimeout(() => {
+      cleanUpTransition();
+    }, 550);
+  };
+
+  const cleanUpTransition = () => {
+    // Reset Scroll to 0 (Now "Next" becomes "Current" visually)
+    scrollTranslateY.value = 0;
+    // Remove "Prev" view
+    setPrevLevel(undefined);
   };
 
   const handleReplay = () => {
-    // Reset animations
     headerTranslateY.value = 0;
     boardScale.value = 1;
     boardTranslateY.value = 0;
     continueButtonScale.value = 0;
     setShowContinue(false);
+    star1Scale.value = 0;
+    star2Scale.value = 0;
+    star3Scale.value = 0;
 
     resetGame();
     if (level) {
-      useJigsawStore.getState().actions.initializeLevel(level.gridSize);
+      initializeLevel(level.gridSize);
     }
   };
 
   // Animated Styles
+  const scrollStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: scrollTranslateY.value }],
+  }));
+
   const headerAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: headerTranslateY.value }],
   }));
-
   const movesAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: movesTranslateY.value }],
   }));
-
   const star1Style = useAnimatedStyle(() => ({
     transform: [{ scale: star1Scale.value }],
   }));
@@ -190,19 +291,36 @@ export default function JigsawGameScreen() {
   const star3Style = useAnimatedStyle(() => ({
     transform: [{ scale: star3Scale.value }],
   }));
-
   const boardAnimatedStyle = useAnimatedStyle(() => ({
     transform: [
       { scale: boardScale.value },
       { translateY: boardTranslateY.value },
     ],
   }));
-
   const continueButtonStyle = useAnimatedStyle(() => ({
     transform: [{ scale: continueButtonScale.value }],
   }));
 
-  if (isLoading || !level) {
+  // Layout Calculations - FIXED PERCENTAGES
+  const HEADER_HEIGHT = 60;
+  const MOVES_HEIGHT = 80;
+  const BANNER_HEIGHT = canShowBanner() ? 60 : 0;
+  const topInset = insets.top;
+
+  // Board positioned below header + stats area
+  const contentTopStart = topInset + HEADER_HEIGHT + MOVES_HEIGHT;
+  const bottomSpace = canShowBanner() ? BANNER_HEIGHT + 10 : insets.bottom + 10;
+
+  // Board takes 75% of available height for larger gameplay area
+  const availableHeight = height - contentTopStart - bottomSpace;
+  const boardHeight = Math.floor(availableHeight * 0.95);
+
+  // Render Inner Content (The Game)
+  // We extract this to render it twice (once for prev, once for next)
+  // BUT 'prev' is static image, 'next' is interactive board.
+  // So we handle them explicitly.
+
+  if (isLoading && !level) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={COLORS.accent} />
@@ -210,171 +328,209 @@ export default function JigsawGameScreen() {
     );
   }
 
-  // Layout Calculations
-  const HEADER_HEIGHT = 60;
-  const MOVES_HEIGHT = 80; // Enough space for "32" font + label + margins
-  const BANNER_HEIGHT = canShowBanner() ? 60 : 0; // Approximate banner height
-
-  // Total top inset including status bar, header
-  const topInset = insets.top;
-
-  // Where the Board starts (below Header AND Moves)
-  const contentTopStart = topInset + HEADER_HEIGHT + MOVES_HEIGHT;
-
-  // Available height for the board
-  // Board sits between Header+Moves and Bottom functionality.
-  // Banner is at strictly Bottom 0.
-  // We need to ensure we don't draw under the banner.
-  // If Banner exists, we reserve BANNER_HEIGHT space at bottom.
-  // If no banner, we reserve insets.bottom.
-  const bottomSpace = canShowBanner() ? BANNER_HEIGHT : insets.bottom;
-
-  const boardHeight = height - contentTopStart - bottomSpace;
-
   return (
     <GestureHandlerRootView
       style={{ flex: 1, backgroundColor: COLORS.background }}
     >
       <Stack.Screen options={{ headerShown: false }} />
 
-      {/* CONFETTI - Behind everything */}
-      {status === "won" && (
-        <View style={styles.confettiContainer} pointerEvents="none">
-          <DotLottie
-            source={require("@/src/assets/animations/confettie.lottie")}
-            style={{ flex: 1 }}
-            autoplay
-            loop={false}
-          />
-        </View>
-      )}
-
-      {/* HEADER - Animated for win sequence */}
-      <Animated.View
-        style={[
-          styles.header,
-          { top: insets.top, height: HEADER_HEIGHT },
-          headerAnimatedStyle,
-        ]}
-      >
-        {/* Left: Back & Reload */}
-        <View style={styles.headerLeftGroups}>
-          <TouchableOpacity onPress={handleBack} style={styles.headerBtn}>
-            <Ionicons
-              name="chevron-back"
-              size={28}
-              color={COLORS.textPrimary}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => resetGame()}
-            style={styles.headerBtn}
+      {/* Main Vertical Scroll Container */}
+      <Animated.View style={[{ flex: 1 }, scrollStyle]}>
+        {/* VIEW 1: PREVIOUS LEVEL (Only visible during transition) */}
+        {prevLevel && (
+          <View
+            style={{ width, height, position: "absolute", top: 0, left: 0 }}
           >
-            <Ionicons name="refresh" size={24} color={COLORS.textPrimary} />
-          </TouchableOpacity>
-        </View>
+            {/* Just the Image as "Won State" */}
+            <View style={styles.header}>
+              {/* Dummy Header for visuals */}
+              <View style={styles.headerCenter}>
+                <Text style={styles.headerTitle}>{prevLevel.name}</Text>
+              </View>
+            </View>
+            <View
+              style={{
+                flex: 1,
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <Image
+                source={prevLevel.imageSource}
+                style={{ width: width - 40, height: boardHeight }}
+                contentFit="contain"
+              />
+            </View>
+          </View>
+        )}
 
-        {/* Center: Title Only */}
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {level.name || `Level ${levelId}`}
-          </Text>
-        </View>
+        {/* VIEW 2: CURRENT / NEXT LEVEL (Bottom if transition, or Top if normal) */}
+        <View
+          style={{
+            width,
+            height,
+            marginTop: prevLevel ? height : 0, // Push down if prev exists
+          }}
+        >
+          {/* Confetti (Only for current active game) */}
+          {status === "won" && (
+            <View style={styles.confettiContainer} pointerEvents="none">
+              <DotLottie
+                source={require("@/src/assets/animations/confettie.lottie")}
+                style={{ flex: 1 }}
+                autoplay
+                loop={true}
+              />
+            </View>
+          )}
 
-        {/* Right: Settings (and Preview) */}
-        <View style={styles.headerRightGroups}>
-          {/* ... existing right buttons ... */}
-          <TouchableOpacity
-            onPress={() => setShowPreview(true)}
-            style={styles.headerBtn}
+          {/* HEADER */}
+          <Animated.View
+            style={[
+              styles.header,
+              { top: insets.top, height: HEADER_HEIGHT },
+              headerAnimatedStyle,
+            ]}
           >
-            <Image
-              source={level.imageSource}
-              style={styles.thumbnail}
-              contentFit="cover"
-            />
-          </TouchableOpacity>
+            <View style={styles.headerLeftGroups}>
+              <TouchableOpacity onPress={handleBack} style={styles.headerBtn}>
+                <Ionicons
+                  name="chevron-back"
+                  size={28}
+                  color={COLORS.textPrimary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleReplay} style={styles.headerBtn}>
+                <Ionicons name="refresh" size={24} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.headerCenter}>
+              <Text style={styles.headerTitle} numberOfLines={1}>
+                {level?.name || `Level ${currentLevelId}`}
+              </Text>
+            </View>
+            <View style={styles.headerRightGroups}>
+              <TouchableOpacity
+                onPress={() => setShowPreview(true)}
+                style={styles.headerBtn}
+              >
+                {level && (
+                  <Image
+                    source={level.imageSource}
+                    style={styles.thumbnail}
+                    contentFit="cover"
+                  />
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowSettings(true)}
+                style={styles.headerBtn}
+              >
+                <Ionicons
+                  name="settings-sharp"
+                  size={24}
+                  color={COLORS.textPrimary}
+                />
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
 
-          <TouchableOpacity
-            onPress={() => setShowSettings(true)}
-            style={styles.headerBtn}
+          {/* STATS */}
+          <View
+            style={[
+              styles.statsContainer,
+              { top: topInset + HEADER_HEIGHT, height: MOVES_HEIGHT },
+            ]}
           >
-            <Ionicons
-              name="settings-sharp"
-              size={24}
-              color={COLORS.textPrimary}
-            />
-          </TouchableOpacity>
+            <Animated.View style={[styles.movesBlock, movesAnimatedStyle]}>
+              <Text style={styles.movesValueBig}>{moves}</Text>
+              <Text style={styles.movesLabelSmall}>HAMLE</Text>
+            </Animated.View>
+            {/* Stars only visible when game is won */}
+            {status === "won" && (
+              <View style={styles.starsRow}>
+                <Animated.View style={star1Style}>
+                  <Ionicons
+                    name="star"
+                    size={48}
+                    color={
+                      earnedStars >= 1 ? COLORS.starFilled : COLORS.starEmpty
+                    }
+                  />
+                </Animated.View>
+                <Animated.View style={[star2Style, { marginTop: -20 }]}>
+                  <Ionicons
+                    name="star"
+                    size={64}
+                    color={
+                      earnedStars >= 2 ? COLORS.starFilled : COLORS.starEmpty
+                    }
+                  />
+                </Animated.View>
+                <Animated.View style={star3Style}>
+                  <Ionicons
+                    name="star"
+                    size={48}
+                    color={
+                      earnedStars >= 3 ? COLORS.starFilled : COLORS.starEmpty
+                    }
+                  />
+                </Animated.View>
+              </View>
+            )}
+          </View>
+
+          {/* BOARD */}
+          <Animated.View
+            style={[
+              styles.gameArea,
+              { marginTop: contentTopStart, height: boardHeight },
+              boardAnimatedStyle,
+            ]}
+          >
+            {level && (
+              <JigsawBoard
+                key={`${currentChapter}-${currentLevelId}`} // Force remount on level change
+                gridSize={level.gridSize}
+                imageSource={level.imageSource}
+                boardWidth={width}
+                boardHeight={boardHeight}
+              />
+            )}
+          </Animated.View>
+
+          {/* CONTINUE BUTTON */}
+          {showContinue && (
+            <Animated.View
+              style={[styles.continueContainer, continueButtonStyle]}
+            >
+              <TouchableOpacity
+                style={styles.continueButton}
+                onPress={handleNextLevel}
+              >
+                <Text style={styles.continueText}>SONRAKİ</Text>
+                <Ionicons name="arrow-down" size={20} color="white" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.replayButton}
+                onPress={handleReplay}
+              >
+                <Ionicons
+                  name="refresh"
+                  size={18}
+                  color={COLORS.textSecondary}
+                />
+                <Text style={styles.replayText}>Replay</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
         </View>
       </Animated.View>
 
-      {/* MOVES DISPLAY & STARS CONTAINER */}
-      {/* Positioned just below header initially, moves UP when won */}
-      <View
-        style={[
-          styles.statsContainer,
-          {
-            top: topInset + HEADER_HEIGHT,
-            height: MOVES_HEIGHT,
-          },
-        ]}
-      >
-        <Animated.View style={[styles.movesBlock, movesAnimatedStyle]}>
-          <Text style={styles.movesValueBig}>{moves}</Text>
-          <Text style={styles.movesLabelSmall}>HAMLE</Text>
-        </Animated.View>
-
-        {/* STARS - Visible only when animating/won (controlled by scale) */}
-        <View style={styles.starsRow}>
-          <Animated.View style={star1Style}>
-            <Ionicons
-              name="star"
-              size={48}
-              color={earnedStars >= 1 ? COLORS.starFilled : COLORS.starEmpty}
-            />
-          </Animated.View>
-          <Animated.View style={[star2Style, { marginTop: -20 }]}>
-            <Ionicons
-              name="star"
-              size={64} // Middle star bigger
-              color={earnedStars >= 2 ? COLORS.starFilled : COLORS.starEmpty}
-            />
-          </Animated.View>
-          <Animated.View style={star3Style}>
-            <Ionicons
-              name="star"
-              size={48}
-              color={earnedStars >= 3 ? COLORS.starFilled : COLORS.starEmpty}
-            />
-          </Animated.View>
-        </View>
-      </View>
-
-      {/* GAME BOARD - Animated for win sequence */}
-      <Animated.View
-        style={[
-          styles.gameArea,
-          {
-            // Push board down to clear Header + Moves
-            marginTop: contentTopStart,
-            height: boardHeight, // Precise calculated height
-            marginBottom: 0, // We handled bottomSpace in height calc
-          },
-          boardAnimatedStyle,
-        ]}
-      >
-        <JigsawBoard
-          gridSize={level.gridSize}
-          imageSource={level.imageSource}
-          boardWidth={width}
-          boardHeight={boardHeight}
-        />
-      </Animated.View>
-
-      {/* IMAGE PREVIEW MODAL */}
+      {/* GLOBAL MODALS (Outside Scroll) */}
       <Modal
         visible={showPreview}
-        transparent={true}
+        transparent
         animationType="fade"
         onRequestClose={() => setShowPreview(false)}
       >
@@ -384,34 +540,18 @@ export default function JigsawGameScreen() {
           onPress={() => setShowPreview(false)}
         >
           <View style={styles.previewContainer}>
-            <Image
-              source={level.imageSource}
-              style={{ width: width * 0.9, height: height * 0.6 }}
-              contentFit="contain"
-            />
+            {level && (
+              <Image
+                source={level.imageSource}
+                style={{ width: width * 0.9, height: height * 0.6 }}
+                contentFit="contain"
+              />
+            )}
             <Text style={styles.previewText}>Tap to Close</Text>
           </View>
         </TouchableOpacity>
       </Modal>
 
-      {/* CONTINUE BUTTON (Win Sequence) */}
-      {showContinue && (
-        <Animated.View style={[styles.continueContainer, continueButtonStyle]}>
-          <TouchableOpacity
-            style={styles.continueButton}
-            onPress={handleNextLevel}
-          >
-            <Text style={styles.continueText}>DEVAM</Text>
-            <Ionicons name="arrow-forward" size={20} color="white" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.replayButton} onPress={handleReplay}>
-            <Ionicons name="refresh" size={18} color={COLORS.textSecondary} />
-            <Text style={styles.replayText}>Replay</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      )}
-
-      {/* SETTINGS MENU */}
       <GameSettingsMenu
         visible={showSettings}
         onClose={() => setShowSettings(false)}
@@ -438,7 +578,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 8, // Reduced padding to fit more items
+    paddingHorizontal: 8,
     zIndex: 100,
   },
   headerLeftGroups: {
@@ -498,7 +638,7 @@ const styles = StyleSheet.create({
   },
   continueContainer: {
     position: "absolute",
-    bottom: 80, // Moved up from 40
+    bottom: 80,
     left: 0,
     right: 0,
     alignItems: "center",
@@ -543,9 +683,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: "center",
-    zIndex: 95, // Below header (zIndex 100) but above board
-    pointerEvents: "none", // Let touches pass through to board if needed?
-    // Wait, moves is info. zIndex 95.
+    zIndex: 95,
+    pointerEvents: "none",
   },
   movesBlock: {
     alignItems: "center",
@@ -561,7 +700,7 @@ const styles = StyleSheet.create({
   movesLabelSmall: {
     fontSize: 12,
     fontWeight: "600",
-    color: COLORS.textSecondary, // "bg felan olmasın" -> transparent bg, ensuring text is visible
+    color: COLORS.textSecondary,
     marginTop: -2,
     letterSpacing: 1,
   },
@@ -569,8 +708,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 2, // Tighter gap
-    marginTop: 8, // Less space between moves and stars
+    gap: 2,
+    marginTop: 8,
   },
   headerCenter: {
     alignItems: "center",

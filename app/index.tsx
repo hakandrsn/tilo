@@ -44,53 +44,45 @@ export default function StartScreen() {
   const { loadProgress } = useProgressActions();
   const { loadAdState } = useAdActions();
 
+  const { getNextPlayableLevel } = useProgressActions();
+
   const [isReady, setIsReady] = useState(false);
-  const [nextLevelImage, setNextLevelImage] = useState<any>(null);
 
   useEffect(() => {
     const initGame = async () => {
-      // 1. Load User Progress & Ads
-      await Promise.all([loadProgress(), loadAdState()]);
+      // 1. Load data in parallel
+      await Promise.all([loadProgress(), loadAdState(), getChapters()]);
 
-      // 2. Fetch Chapters (Game Data)
-      const fetchedChapters = await getChapters();
-
-      // 3. Asset Prefetching
-      // Prefetch Chapter Thumbnails
-      fetchedChapters.forEach((chapter) => {
-        if (chapter.thumbnail) {
-          // Check if thumbnail is a remote URI (string) or local require (number)
-          // Image.prefetch only works for remote URIs.
-          // Expo Image handles caching for local assets automatically.
-          if (typeof chapter.thumbnail === "string") {
-            Image.prefetch(chapter.thumbnail);
-          }
-        }
-      });
-
-      // 4. Prepare Next Level (for "Devam Et")
-      // Determine where the user left off
-      // If lastPlayed exists, check if that level is completed?
-      // Actually usually "Continue" implies playing the *next* level if completed,
-      // or the *current* level if incomplete.
-      // Current logic in store `getLastPlayed` just returns {chapterId, levelId}.
-      // We'll rely on what's stored or default to 1-1.
-
-      let targetChapterId = 1;
-      let targetLevelId = 1;
-
-      // We can grab the latest state directly from store to be safe, but hooks update.
-      // Using the hook values inside useEffect might be stale if deps aren't set,
-      // but we are running this ONCE on mount.
-      // Better to use the actions/store getters or await the loadProgress promise resolving.
-
-      // Let's assume defaults for prefetch, and real logic in handleContinue.
-      // We'll try to guess the most likely next level to prefetch its image.
-
-      // NOTE: We refrain from heavy logic here to keep startup fast.
-      // But we fetching level data to get the image is good.
-
+      // 2. Ready for UI - allow interaction immediately
       setIsReady(true);
+
+      // 3. Optimization: Non-blocking calculation & prefetch
+      // We don't need to store this in state if we can calc it on click,
+      // but prefetching needs it now.
+      const target = getNextPlayableLevel();
+
+      console.log("📍 Smart Navigation Target:", target);
+
+      if (target) {
+        // Fetch specific level data to get image URI
+        const levelData = await getLevelById(target.chapterId, target.levelId);
+
+        // Fire-and-forget prefetch - don't block the UI
+        if (
+          levelData?.imageSource &&
+          typeof levelData.imageSource === "object" &&
+          "uri" in levelData.imageSource &&
+          levelData.imageSource.uri
+        ) {
+          console.log(
+            "🚀 Prefetching Target Level Image:",
+            levelData.imageSource.uri,
+          );
+          Image.prefetch(levelData.imageSource.uri).catch((e) =>
+            console.warn("Prefetch failed", e),
+          );
+        }
+      }
     };
 
     initGame();
@@ -105,15 +97,17 @@ export default function StartScreen() {
   });
 
   const handleContinue = async () => {
-    if (lastPlayed) {
-      // Navigate to last played
-      // Ideally we check if it's completed?
-      // For now, trust the state.
-      router.push(`/game/jigsaw/${lastPlayed.chapterId}/${lastPlayed.levelId}`);
-    } else {
-      // Start fresh
-      router.push("/game/jigsaw/1/1");
-    }
+    console.time("👉 Continue Button Press");
+    // Always calculate fresh target to ensure accuracy
+    const target = getNextPlayableLevel();
+    console.log("📍 Navigating to:", target);
+
+    // Navigate
+    router.push(`/game/jigsaw/${target.chapterId}/${target.levelId}`);
+
+    // Optimization: Yield to main thread to allow navigation animation to start
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    console.timeEnd("👉 Continue Button Press");
   };
 
   const handleChapters = () => {

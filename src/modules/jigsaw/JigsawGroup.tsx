@@ -37,7 +37,7 @@ const JigsawGroup: React.FC<JigsawGroupProps> = ({
     (state) => state.actions.bringGroupToFront,
   );
   const status = useJigsawStore((state) => state.status);
-  const { attemptDrop } = useJigsawLogic(pieceSize);
+  const { attemptDrop } = useJigsawLogic(pieceSize, pieceSize);
 
   // Group State
   const isLocked = pieces[0]?.isLocked ?? false;

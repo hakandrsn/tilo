@@ -9,7 +9,6 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
 import {
   BOARD_PADDING,
   COLORS,
@@ -36,83 +35,78 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // ... existing imports
 
-const LevelCard: React.FC<LevelCardProps> = ({
-  level,
-  index,
-  isUnlocked,
-  progress,
-  cardSize,
-  chapterColor,
-  onPress,
-}) => {
-  return (
-    <Animated.View
-      entering={FadeInDown.delay(index * 20).springify()}
-      style={{ width: cardSize, alignItems: "center" }}
-    >
-      <TouchableOpacity
-        style={[
-          styles.levelCard,
-          { width: cardSize, height: cardSize },
-          progress?.completed && {
-            borderColor: chapterColor || COLORS.accent,
-            borderWidth: 2,
-          },
-        ]}
-        onPress={onPress}
-        disabled={!isUnlocked}
-        activeOpacity={0.7}
-      >
-        {/* Background Image */}
-        <Image
-          source={level.imageSource}
-          style={[StyleSheet.absoluteFill, styles.cardBgImage]}
-          contentFit="cover"
-          transition={200}
-        />
+const LevelCard = React.memo<LevelCardProps>(
+  ({ level, index, isUnlocked, progress, cardSize, chapterColor, onPress }) => {
+    return (
+      <View style={{ width: cardSize, height: cardSize, alignItems: "center" }}>
+        <TouchableOpacity
+          style={[
+            styles.levelCard,
+            { width: cardSize, height: cardSize },
+            progress?.completed && {
+              borderColor: chapterColor || COLORS.accent,
+              borderWidth: 2,
+            },
+          ]}
+          onPress={onPress}
+          disabled={!isUnlocked}
+          activeOpacity={0.7}
+        >
+          {/* Background Image */}
+          <Image
+            source={level.imageSource}
+            style={[StyleSheet.absoluteFill, styles.cardBgImage]}
+            contentFit="cover"
+            transition={200}
+            cachePolicy="memory-disk"
+          />
 
-        {/* Dark Overlay for Readability (Only when locked) */}
-        {!isUnlocked && (
-          <View style={[StyleSheet.absoluteFill, styles.cardOverlayLocked]} />
-        )}
+          {/* Dark Overlay for Readability (Only when locked) */}
+          {!isUnlocked && (
+            <View style={[StyleSheet.absoluteFill, styles.cardOverlayLocked]} />
+          )}
 
-        {isUnlocked ? (
-          <View style={styles.cardContent}>
-            <View style={styles.levelBadge}>
+          {isUnlocked ? (
+            /* Redesigned Bottom Bar: Number + Stars */
+            <View style={styles.cardBottomBar}>
               <Text style={styles.levelNumber}>{level.id}</Text>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.centeredContent}>
-            <Text style={styles.lockIcon}>🔒</Text>
-          </View>
-        )}
-      </TouchableOpacity>
 
-      {/* Stars Row - Consistent Height for ALL cards */}
-      <View style={styles.starsRowBelow}>
-        {isUnlocked ? (
-          [1, 2, 3].map((star) => {
-            const isFilled =
-              progress?.completed && star <= (progress?.stars || 0);
-            return (
-              <Ionicons
-                key={star}
-                name="star"
-                size={14}
-                color={isFilled ? "#fbbf24" : "#e2e8f0"} // Gold or Light Gray
-                style={isFilled && styles.starShadow} // Optional shadow for filled
-              />
-            );
-          })
-        ) : (
-          // Placeholder for locked levels to maintain height
-          <View style={{ height: 14 }} />
-        )}
+              {/* Stars next to number */}
+              <View style={styles.starsRowInline}>
+                {[1, 2, 3].map((star) => {
+                  const isFilled =
+                    progress?.completed && star <= (progress?.stars || 0);
+                  return (
+                    <Ionicons
+                      key={star}
+                      name="star"
+                      size={12}
+                      color={isFilled ? "#fbbf24" : "rgba(255,255,255,0.4)"}
+                      style={isFilled && styles.starShadow}
+                    />
+                  );
+                })}
+              </View>
+            </View>
+          ) : (
+            <View style={styles.centeredContent}>
+              <Text style={styles.lockIcon}>🔒</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
-    </Animated.View>
-  );
-};
+    );
+  },
+  (prev, next) => {
+    return (
+      prev.isUnlocked === next.isUnlocked &&
+      prev.progress?.completed === next.progress?.completed &&
+      prev.progress?.stars === next.progress?.stars &&
+      prev.cardSize === next.cardSize &&
+      prev.chapterColor === next.chapterColor
+    );
+  },
+);
 
 export default function LevelsScreen() {
   const router = useRouter();
@@ -225,6 +219,11 @@ export default function LevelsScreen() {
         columnWrapperStyle={{ gap }}
         ItemSeparatorComponent={() => <View style={{ height: gap }} />}
         showsVerticalScrollIndicator={false}
+        // Performance optimizations
+        removeClippedSubviews={true}
+        initialNumToRender={numColumns * 4}
+        maxToRenderPerBatch={numColumns * 2}
+        windowSize={5}
       />
     </View>
   );
@@ -303,8 +302,6 @@ const styles = StyleSheet.create({
   levelCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
     borderWidth: 1,
     borderColor: COLORS.border,
     overflow: "hidden", // Important for image masking
@@ -312,83 +309,38 @@ const styles = StyleSheet.create({
   cardBgImage: {
     opacity: 1, // Full vibrancy!
   },
-  cardOverlay: {
-    // Removed default dark overlay
-    backgroundColor: "transparent",
-  },
   cardOverlayLocked: {
     backgroundColor: "rgba(0,0,0,0.6)", // Lighter lock overlay
   },
-  cardContent: {
-    flex: 1,
-    justifyContent: "space-between",
+  cardBottomBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 28,
+    backgroundColor: "rgba(0,0,0,0.6)", // Semi-transparent dark overlay
+    flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
-  },
-  levelCardLocked: {
-    opacity: 0.5,
-  },
-  levelBadge: {
-    backgroundColor: "rgba(255,255,255,0.9)", // Bright badge
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-    marginTop: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
+    gap: 4,
   },
   levelNumber: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "900",
-    color: COLORS.textSecondary, // Dark text on light badge
+    color: "#ffffff",
+  },
+  starsRowInline: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 1,
   },
   lockIcon: {
     fontSize: 24,
-    marginTop: 20, // Center optically
-  },
-  starsRow: {
-    // Old starsRow style kept just in case, but unused now
-    flexDirection: "row",
-    gap: 1,
-    marginBottom: 4,
-  },
-  starsRowBelow: {
-    flexDirection: "row",
-    gap: 2,
-    marginTop: 4,
-    height: 16, // Fixed height to prevent layout shifts
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  starSmall: {
-    fontSize: 12,
-    color: "#cbd5e1", // Light gray for empty stars (slate-300)
-  },
-  starFilledSmall: {
-    color: "#fbbf24", // Vibrant Gold
   },
   centeredContent: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-  },
-  starPlaceholder: {
-    fontSize: 10,
-    color: "transparent",
-  },
-  star: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.5)", // Unearned star
-    textShadowColor: "black",
-    textShadowRadius: 1,
-  },
-  starFilled: {
-    color: "#fbbf24", // Vibrant Gold
-    textShadowColor: "rgba(0,0,0,0.5)",
-    textShadowRadius: 1,
   },
   starShadow: {
     shadowColor: "#000",

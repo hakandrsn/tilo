@@ -99,9 +99,28 @@ export const showInterstitial = async (): Promise<boolean> => {
 
   return new Promise((resolve) => {
     try {
+      // Listen for ad close event BEFORE showing
+      const closeListener = interstitialAd.addAdEventListener(
+        AdEventType.CLOSED,
+        () => {
+          console.log("📺 Interstitial closed by user");
+          closeListener(); // Remove listener
+          resolve(true); // Ad was watched
+        },
+      );
+
+      // Also handle errors
+      const errorListener = interstitialAd.addAdEventListener(
+        AdEventType.ERROR,
+        () => {
+          console.log("📺 Interstitial error during show");
+          errorListener();
+          resolve(false);
+        },
+      );
+
       interstitialAd.show();
       useAdStore.getState().actions.markInterstitialShown();
-      resolve(true);
     } catch (error) {
       console.log("📺 Interstitial show error:", error);
       resolve(false);
@@ -194,15 +213,20 @@ export const showRewarded = (): Promise<boolean> => {
 // INITIALIZATION
 // ==========================================
 
+// PERFORMANCE: Deferred initialization to prevent blocking splash/animations
 export const initializeAds = () => {
   if (!isAdMobAvailable) {
     console.log("📺 AdMob not available, skipping initialization");
     return;
   }
 
-  console.log("📺 Initializing ads...");
-  loadInterstitial();
-  loadRewarded();
+  // Defer ad loading to prevent JS bridge contention during startup
+  // This allows splash screen and initial animations to complete smoothly
+  setTimeout(() => {
+    console.log("📺 Initializing ads (deferred)...");
+    loadInterstitial();
+    loadRewarded();
+  }, 1500); // 1.5s delay after app is interactive
 };
 
 export const isInterstitialReady = () =>

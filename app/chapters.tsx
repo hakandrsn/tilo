@@ -10,7 +10,6 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
 import ChapterNativeAd from "../src/components/ChapterNativeAd";
 import {
   BOARD_PADDING,
@@ -35,69 +34,72 @@ interface ChapterCardProps {
   onPress: () => void;
 }
 
-const ChapterCard: React.FC<ChapterCardProps> = ({
-  chapter,
-  index,
-  isUnlocked,
-  progress,
-  cardWidth,
-  onPress,
-}) => {
-  const progressPercent = (progress.completed / progress.total) * 100;
+const ChapterCard = React.memo<ChapterCardProps>(
+  ({ chapter, index, isUnlocked, progress, cardWidth, onPress }) => {
+    const progressPercent = (progress.completed / progress.total) * 100;
 
-  return (
-    <Animated.View
-      entering={FadeInDown.delay(index * 40).springify()}
-      style={{ width: cardWidth }}
-    >
-      <TouchableOpacity
-        style={[styles.card, !isUnlocked && styles.cardLocked]}
-        onPress={onPress}
-        disabled={!isUnlocked}
-        activeOpacity={0.7}
-      >
-        {/* Thumbnail Section */}
-        <View style={styles.thumbnailArea}>
-          <Image
-            source={chapter.thumbnail}
-            style={styles.thumbnail}
-            contentFit="cover"
-          />
-          <View style={styles.overlay} />
-          <View style={styles.idBadge}>
-            <Text style={styles.idBadgeTxt}>{chapter.id}</Text>
+    return (
+      <View style={{ width: cardWidth }}>
+        <TouchableOpacity
+          style={[styles.card, !isUnlocked && styles.cardLocked]}
+          onPress={onPress}
+          disabled={!isUnlocked}
+          activeOpacity={0.7}
+        >
+          {/* Thumbnail Section */}
+          <View style={styles.thumbnailArea}>
+            <Image
+              source={chapter.thumbnail}
+              style={styles.thumbnail}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              transition={200}
+            />
+            <View style={styles.overlay} />
+            <View style={styles.idBadge}>
+              <Text style={styles.idBadgeTxt}>{chapter.id}</Text>
+            </View>
+            {!isUnlocked && (
+              <View style={styles.lockedArea}>
+                <Text style={styles.lockIc}>🔒</Text>
+              </View>
+            )}
           </View>
-          {!isUnlocked && (
-            <View style={styles.lockedArea}>
-              <Text style={styles.lockIc}>🔒</Text>
-            </View>
-          )}
-        </View>
 
-        {/* Content Section */}
-        <View style={styles.infoArea}>
-          <Text style={styles.name} numberOfLines={1}>
-            {chapter.name}
-          </Text>
-          <View style={styles.progressRow}>
-            <View style={styles.barBg}>
-              <View
-                style={[styles.barFill, { width: `${progressPercent}%` }]}
-              />
-            </View>
-            <Text style={styles.progressStats}>
-              {progress.completed}/{progress.total}
+          {/* Content Section */}
+          <View style={styles.infoArea}>
+            <Text style={styles.name} numberOfLines={1}>
+              {chapter.name}
             </Text>
+            <View style={styles.progressRow}>
+              <View style={styles.barBg}>
+                <View
+                  style={[styles.barFill, { width: `${progressPercent}%` }]}
+                />
+              </View>
+              <Text style={styles.progressStats}>
+                {progress.completed}/{progress.total}
+              </Text>
+            </View>
+            <View style={styles.starInfo}>
+              <Text style={styles.starIc}>★</Text>
+              <Text style={styles.starVal}>{progress.stars}</Text>
+            </View>
           </View>
-          <View style={styles.starInfo}>
-            <Text style={styles.starIc}>★</Text>
-            <Text style={styles.starVal}>{progress.stars}</Text>
-          </View>
-        </View>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-};
+        </TouchableOpacity>
+      </View>
+    );
+  },
+  (prev, next) => {
+    return (
+      prev.isUnlocked === next.isUnlocked &&
+      prev.progress.completed === next.progress.completed &&
+      prev.progress.stars === next.progress.stars &&
+      prev.cardWidth === next.cardWidth &&
+      prev.index === next.index
+    );
+  },
+);
 
 export default function ChaptersScreen() {
   const router = useRouter();
@@ -202,6 +204,11 @@ export default function ChaptersScreen() {
         contentContainerStyle={[styles.listContent, { padding }]}
         ItemSeparatorComponent={() => <View style={{ height: gap }} />}
         showsVerticalScrollIndicator={false}
+        // Performance optimizations
+        removeClippedSubviews={true} // High impact on Android
+        initialNumToRender={4} // Render just enough to fill screen
+        maxToRenderPerBatch={4}
+        windowSize={5} // Keep memory usage low
       />
     </View>
   );
@@ -222,14 +229,12 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
     gap: 6,
-    borderWidth: 1,
-    borderColor: COLORS.border,
   },
   headerStarIcon: { fontSize: 16, color: COLORS.starFilled },
   headerStarText: {
     fontSize: 15,
     fontWeight: "800",
-    color: COLORS.primary,
+    color: COLORS.textPrimary,
   },
   listContent: { paddingBottom: 40 },
   card: {

@@ -12,6 +12,7 @@ import { GridSize, LevelProgress, UserProgress } from "../types";
 interface ProgressState {
   progress: UserProgress;
   isLoaded: boolean;
+  isLoading: boolean;
 }
 
 interface ProgressActions {
@@ -36,6 +37,7 @@ interface ProgressActions {
     stars: number;
   };
   getLastPlayed: () => { chapterId: number; levelId: number } | null;
+  getNextPlayableLevel: () => { chapterId: number; levelId: number };
 }
 
 interface ProgressStore extends ProgressState {
@@ -53,112 +55,112 @@ const createInitialProgress = (): UserProgress => ({
 const getLevelKey = (chapterId: number, levelId: number): string =>
   `${chapterId}-${levelId}`;
 
+let loadingPromise: Promise<void> | null = null;
+
 export const useProgressStore = create<ProgressStore>((set, get) => ({
   progress: createInitialProgress(),
   isLoaded: false,
+  isLoading: false,
 
   actions: {
     loadProgress: async () => {
-      try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEYS.USER_PROGRESS);
-        if (stored) {
-          set({ progress: JSON.parse(stored), isLoaded: true });
-        }
+      const { isLoaded, isLoading } = get();
 
-        const currentUser = auth?.currentUser;
-        if (currentUser) {
-          console.log("🔍 Loading progress for user:", currentUser.uid);
-          const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-          if (userDoc.exists()) {
-            const cloudData = userDoc.data();
-            console.log(
-              "☁️ Raw cloud data:",
-              JSON.stringify(cloudData, null, 2),
-            );
+      // Prevent duplicate loads
+      if (isLoaded) return;
 
-            // Convert flat Firestore structure to nested object
-            // Firestore stores: "progress.completedLevels.1-2": {...}
-            // We need: { progress: { completedLevels: { "1-2": {...} } } }
-            const convertFlatToNested = (flatData: any): any => {
-              const result: any = {};
-
-              for (const key in flatData) {
-                if (key.startsWith("progress.")) {
-                  const parts = key.split(".");
-                  let current = result;
-
-                  for (let i = 0; i < parts.length - 1; i++) {
-                    const part = parts[i];
-                    if (!current[part]) {
-                      current[part] = {};
-                    }
-                    current = current[part];
-                  }
-
-                  current[parts[parts.length - 1]] = flatData[key];
-                } else if (key !== "lastUpdated") {
-                  result[key] = flatData[key];
-                }
-              }
-
-              return result;
-            };
-
-            const nestedData = convertFlatToNested(cloudData);
-            console.log(
-              "🔄 Converted to nested:",
-              JSON.stringify(nestedData, null, 2),
-            );
-
-            // Ensure we have all required fields with defaults
-            const cloudProgress: UserProgress = {
-              completedLevels: nestedData?.progress?.completedLevels || {},
-              totalStars: nestedData?.progress?.totalStars || 0,
-              totalCoins: nestedData?.progress?.totalCoins || 0,
-              unlockedChapters: nestedData?.progress?.unlockedChapters || [1],
-              lastPlayed: nestedData?.progress?.lastPlayed,
-            };
-
-            console.log("📊 Parsed cloudProgress:", {
-              completedLevelsCount: Object.keys(
-                cloudProgress.completedLevels || {},
-              ).length,
-              totalStars: cloudProgress.totalStars,
-              unlockedChapters: cloudProgress.unlockedChapters,
-            });
-
-            // Basic validation to ensure we don't wipe local state with empty cloud state if cloud is empty
-            // But here we trust cloud if it has data.
-            // Check if cloud has meaningful data (e.g. at least one level unlocked/completed)
-            if (
-              cloudProgress.completedLevels &&
-              Object.keys(cloudProgress.completedLevels).length > 0
-            ) {
-              console.log("✅ Setting cloud progress to state");
-              set({ progress: cloudProgress, isLoaded: true });
-              await AsyncStorage.setItem(
-                STORAGE_KEYS.USER_PROGRESS,
-                JSON.stringify(cloudProgress),
-              );
-            } else {
-              console.log("⚠️ Cloud progress empty, keeping local data");
-            }
-          } else {
-            console.log("❌ User document does not exist");
-          }
-        } else {
-          console.log("❌ No current user");
-        }
-        set({ isLoaded: true });
-      } catch (error) {
-        console.error("Progress yükleme hatası:", error);
-        set({ isLoaded: true });
+      // If already loading, we could return a stored promise, but for now just returning if in progress is safer to avoid loops,
+      // though typically we want to wait.
+      // Better pattern: Store the active promise.
+      if (isLoading) {
+        // If we had a mechanism to return the active promise, we would.
+        // For now, if loading, just wait a bit or assume it will finish?
+        // Actually, if we return early, the component awaiting this might proceed before data is ready.
+        // Let's add 'loadingPromise' to state/module scope or just keep it simple:
+        // If loading/loaded, do nothing?
+        // But the caller expects to await completion.
+        // A simple class-level variable outside store can hold the promise.
+        return loadingPromise || Promise.resolve();
       }
+
+      set({ isLoading: true });
+
+      loadingPromise = (async () => {
+        try {
+          const stored = await AsyncStorage.getItem(STORAGE_KEYS.USER_PROGRESS);
+          if (stored) {
+            set({ progress: JSON.parse(stored) }); // Don't set isLoaded yet, wait for cloud? No, show local asap.
+          }
+
+          const currentUser = auth?.currentUser;
+          if (currentUser) {
+            console.log("🔍 Loading progress for user:", currentUser.uid);
+            const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+            if (userDoc.exists()) {
+              const cloudData = userDoc.data();
+              // ... cloud parsing logic ...
+              // Helper defined inline or outside.
+              // To minimize diff, we'll keep inline but abbreviated in replacement if not changing.
+              // Actually we need to copy the helper or move it out.
+              // Moving helper out of function scope is cleaner.
+
+              const convertFlatToNested = (flatData: any): any => {
+                const result: any = {};
+                for (const key in flatData) {
+                  if (key.startsWith("progress.")) {
+                    const parts = key.split(".");
+                    let current = result;
+                    for (let i = 0; i < parts.length - 1; i++) {
+                      const part = parts[i];
+                      if (!current[part]) current[part] = {};
+                      current = current[part];
+                    }
+                    current[parts[parts.length - 1]] = flatData[key];
+                  } else if (key !== "lastUpdated") {
+                    result[key] = flatData[key];
+                  }
+                }
+                return result;
+              };
+
+              const nestedData = convertFlatToNested(cloudData);
+
+              const cloudProgress: UserProgress = {
+                completedLevels: nestedData?.progress?.completedLevels || {},
+                totalStars: nestedData?.progress?.totalStars || 0,
+                totalCoins: nestedData?.progress?.totalCoins || 0,
+                unlockedChapters: nestedData?.progress?.unlockedChapters || [1],
+                lastPlayed: nestedData?.progress?.lastPlayed,
+              };
+
+              if (
+                cloudProgress.completedLevels &&
+                Object.keys(cloudProgress.completedLevels).length > 0
+              ) {
+                console.log("✅ Setting cloud progress to state");
+                set({ progress: cloudProgress });
+                await AsyncStorage.setItem(
+                  STORAGE_KEYS.USER_PROGRESS,
+                  JSON.stringify(cloudProgress),
+                );
+              }
+            }
+          }
+          set({ isLoaded: true, isLoading: false });
+        } catch (error) {
+          console.error("Progress yükleme hatası:", error);
+          set({ isLoaded: true, isLoading: false });
+        } finally {
+          loadingPromise = null;
+        }
+      })();
+
+      return loadingPromise;
     },
 
-    // saveProgress removed - dangerous as it overwrites entire object
-
-    completeLevel: async (
+    // PERFORMANCE: Sync function - UI updates immediately
+    // Storage and network writes happen in background (fire-and-forget)
+    completeLevel: (
       chapterId: number,
       levelId: number,
       moves: number,
@@ -181,7 +183,6 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
 
       const starDiff = newLevelProgress.stars - (existingProgress?.stars || 0);
 
-      let newChapterUnlocked = false;
       let nextChapterId = chapterId + 1;
 
       // Coin Logic: Every 4 UNIQUE levels completed = 1 Coin
@@ -192,7 +193,6 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
 
       let coinBonus = 0;
       if (wasBrandNewLevel) {
-        // We just completed a new level.
         const newTotalCompleted = currentCompletedCount + 1;
         if (newTotalCompleted % 4 === 0) {
           coinBonus = 1;
@@ -217,51 +217,48 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
           ...newProgress.unlockedChapters,
           nextChapterId,
         ].sort((a, b) => a - b);
-        newChapterUnlocked = true;
       }
 
-      // Update Local State
+      // 1. Update Local State IMMEDIATELY (UI updates now, WinModal shows)
       set({ progress: newProgress });
-      // Update Local Storage
-      await AsyncStorage.setItem(
+
+      // 2. FIRE-AND-FORGET: AsyncStorage save (no await)
+      AsyncStorage.setItem(
         STORAGE_KEYS.USER_PROGRESS,
         JSON.stringify(newProgress),
-      );
+      ).catch((e) => console.error("AsyncStorage save error:", e));
 
-      // Update Cloud with proper nested structure
+      // 3. FIRE-AND-FORGET: Cloud sync (no await)
       const user = auth.currentUser;
       if (user) {
-        try {
-          // Build proper nested structure instead of dot notation
-          const cloudUpdate = {
-            progress: {
-              completedLevels: {
-                [levelKey]: newLevelProgress,
-              },
-              totalStars: newProgress.totalStars,
-              totalCoins: newProgress.totalCoins,
-              unlockedChapters: newProgress.unlockedChapters,
+        const cloudUpdate = {
+          progress: {
+            completedLevels: {
+              [levelKey]: newLevelProgress,
             },
-            lastUpdated: new Date().toISOString(),
-          };
+            totalStars: newProgress.totalStars,
+            totalCoins: newProgress.totalCoins,
+            unlockedChapters: newProgress.unlockedChapters,
+          },
+          lastUpdated: new Date().toISOString(),
+        };
 
-          console.log("💾 Saving to cloud:", levelKey, newLevelProgress);
+        console.log("💾 Saving to cloud (background):", levelKey);
 
-          // Use setDoc with merge to update nested fields properly
-          await setDoc(doc(db, "users", user.uid), cloudUpdate, {
-            merge: true,
-          });
-        } catch (e) {
-          console.error("Cloud level save error:", e);
-          // Queue for offline sync
-          const { queueProgressUpdate } = await import("../services/syncQueue");
-          await queueProgressUpdate(
-            chapterId,
-            levelId,
-            newLevelProgress.bestMoves,
-            newLevelProgress.stars,
-          );
-        }
+        setDoc(doc(db, "users", user.uid), cloudUpdate, { merge: true }).catch(
+          async (e) => {
+            console.error("Cloud level save error:", e);
+            // Queue for offline sync
+            const { queueProgressUpdate } =
+              await import("../services/syncQueue");
+            queueProgressUpdate(
+              chapterId,
+              levelId,
+              newLevelProgress.bestMoves,
+              newLevelProgress.stars,
+            ).catch((queueErr) => console.error("Queue error:", queueErr));
+          },
+        );
       }
     },
 
@@ -340,6 +337,41 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
       console.warn(
         "Generic saveProgress is deprecated to prevent data loss. Use granular actions.",
       );
+    },
+
+    getNextPlayableLevel: () => {
+      const { progress } = get();
+      const lastPlayed = progress.lastPlayed;
+
+      // 1. No history -> Start 1-1
+      if (!lastPlayed) {
+        return { chapterId: 1, levelId: 1 };
+      }
+
+      // 2. Check if the last played level is completed
+      const levelKey = getLevelKey(lastPlayed.chapterId, lastPlayed.levelId);
+      const isCompleted = progress.completedLevels[levelKey]?.completed;
+
+      if (!isCompleted) {
+        // Stay on this level
+        return lastPlayed;
+      }
+
+      // 3. Logic for Next Level
+      // Current level completed, so move to next.
+      let nextChapter = lastPlayed.chapterId;
+      let nextLevel = lastPlayed.levelId + 1;
+
+      // Check Chapter Boundary
+      if (nextLevel > LEVELS_PER_CHAPTER) {
+        nextChapter++;
+        nextLevel = 1;
+      }
+
+      // We don't check TOTAL_CHAPTERS here; let the UI handle "Coming Soon" or valid check if needed.
+      // But typically we just return valid coordinates.
+
+      return { chapterId: nextChapter, levelId: nextLevel };
     },
   },
 }));

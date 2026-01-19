@@ -14,7 +14,7 @@ export type JigsawPiece = {
 
 export type GameStatus = "playing" | "won";
 
-interface JigsawState {
+export interface JigsawState {
   pieces: Record<number, JigsawPiece>;
   gridSize: GridSize;
   isInitialized: boolean;
@@ -22,6 +22,7 @@ interface JigsawState {
   status: GameStatus;
   isHapticEnabled: boolean;
   moves: number;
+  levelKey: number; // Increments on each new level to trigger flip animation
 }
 
 interface JigsawActions {
@@ -47,6 +48,7 @@ const initialState: JigsawState = {
   status: "playing",
   isHapticEnabled: true,
   moves: 0,
+  levelKey: 0,
 };
 
 // Helper: Shuffle an array
@@ -125,15 +127,60 @@ const findNearestEmptySlotForGroup = (
   }
   return null;
 };
+// Helper: Build a spatial map for O(1) lookups
+const buildPositionMap = (pieces: Record<number, JigsawPiece>) => {
+  const map = new Map<string, JigsawPiece>();
+  for (const p of Object.values(pieces)) {
+    map.set(`${p.currentRow},${p.currentCol}`, p);
+  }
+  return map;
+};
+
+// Helper: Check for adjacency and return mergeable neighbor
+const getMergeableNeighbor = (
+  p: JigsawPiece,
+  posMap: Map<string, JigsawPiece>,
+  currentGroupId: string,
+) => {
+  const neighbors = [
+    { r: p.currentRow - 1, c: p.currentCol, dr: -1, dc: 0 },
+    { r: p.currentRow + 1, c: p.currentCol, dr: 1, dc: 0 },
+    { r: p.currentRow, c: p.currentCol - 1, dr: 0, dc: -1 },
+    { r: p.currentRow, c: p.currentCol + 1, dr: 0, dc: 1 },
+  ];
+
+  for (const n of neighbors) {
+    const neighborPiece = posMap.get(`${n.r},${n.c}`);
+
+    if (neighborPiece && neighborPiece.groupId !== currentGroupId) {
+      if (
+        neighborPiece.correctRow === p.correctRow + n.dr &&
+        neighborPiece.correctCol === p.correctCol + n.dc
+      ) {
+        return neighborPiece;
+      }
+    }
+  }
+  return null;
+};
+
 export const useJigsawStore = create<JigsawStore>((set, get) => ({
   ...initialState,
 
   actions: {
-    initializeLevel: (gridSize) => {
+    initializeLevel: (rawGridSize) => {
+      console.log("Store: initializeLevel called with:", rawGridSize);
+
+      // Handle both object and legacy number format
+      let gridSize = rawGridSize;
+      if (typeof rawGridSize === "number") {
+        gridSize = { cols: rawGridSize, rows: rawGridSize };
+      }
+
       const totalPieces = gridSize.cols * gridSize.rows;
+      console.log("Store: totalPieces to create:", totalPieces);
       const pieces: Record<number, JigsawPiece> = {};
 
-      // 1. Generate all possible grid slots
       const allSlots: { row: number; col: number }[] = [];
       for (let r = 0; r < gridSize.rows; r++) {
         for (let c = 0; c < gridSize.cols; c++) {
@@ -141,10 +188,8 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
         }
       }
 
-      // 2. Shuffle slots to assign random initial positions
       const shuffledSlots = shuffle([...allSlots]);
 
-      // 3. Create Pieces
       for (let i = 0; i < totalPieces; i++) {
         const correctRow = Math.floor(i / gridSize.cols);
         const correctCol = i % gridSize.cols;
@@ -162,46 +207,39 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
         };
       }
 
-      // 4. Initial Auto-Merge (Recursive)
-      // If pieces spawn next to their correct neighbors, merge them immediately.
+      // 4. Initial Auto-Merge (Recursive) with Optimization
       let mergedSomething = true;
-      while (mergedSomething) {
+      let iteration = 0;
+      const MAX_ITERATIONS = 10;
+
+      while (mergedSomething && iteration < MAX_ITERATIONS) {
         mergedSomething = false;
+        iteration++;
+        const posMap = buildPositionMap(pieces);
         const allPieces = Object.values(pieces);
 
         for (const p of allPieces) {
-          const neighbors = [
-            { r: p.currentRow - 1, c: p.currentCol },
-            { r: p.currentRow + 1, c: p.currentCol },
-            { r: p.currentRow, c: p.currentCol - 1 },
-            { r: p.currentRow, c: p.currentCol + 1 },
-          ];
+          const neighbor = getMergeableNeighbor(p, posMap, p.groupId);
 
-          for (const n of neighbors) {
-            const neighbor = allPieces.find(
-              (np) =>
-                np.currentRow === n.r &&
-                np.currentCol === n.c &&
-                np.groupId !== p.groupId,
-            );
+          if (neighbor) {
+            const g1 = p.groupId;
+            const g2 = neighbor.groupId;
 
-            if (neighbor) {
-              const correctRowDiff = neighbor.correctRow - p.correctRow;
-              const correctColDiff = neighbor.correctCol - p.correctCol;
-              const actualRowDiff = neighbor.currentRow - p.currentRow;
-              const actualColDiff = neighbor.currentCol - p.currentCol;
+            if (g1 !== g2) {
+              // Deterministic Merge: Merge LARGER -> SMALLER ID
+              let targetGroupId, sourceGroupId;
+              if (g1 < g2) {
+                targetGroupId = g1;
+                sourceGroupId = g2;
+              } else {
+                targetGroupId = g2;
+                sourceGroupId = g1;
+              }
 
-              if (
-                correctRowDiff === actualRowDiff &&
-                correctColDiff === actualColDiff
-              ) {
-                // Merge!
-                const targetGroupId = neighbor.groupId;
-                const sourceGroupId = p.groupId;
-                // Merge source group INTO target group
-                const sourceMembers = allPieces.filter(
-                  (m) => m.groupId === sourceGroupId,
-                );
+              const sourceMembers = allPieces.filter(
+                (m) => m.groupId === sourceGroupId,
+              );
+              if (sourceMembers.length > 0) {
                 sourceMembers.forEach((m) => {
                   pieces[m.id] = { ...pieces[m.id], groupId: targetGroupId };
                 });
@@ -211,6 +249,8 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
           }
         }
       }
+      if (iteration >= MAX_ITERATIONS)
+        console.warn("Initialize loop maxed out");
 
       set({
         ...initialState,
@@ -219,6 +259,7 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
         isInitialized: true,
         maxZIndex: 1,
         status: "playing",
+        levelKey: get().levelKey + 1, // Increment to trigger flip animation
       });
     },
 
@@ -231,11 +272,12 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
       if (!anchorPiece) return { merged: false };
 
       let draggedGroupId = anchorPiece.groupId;
-      const groupPieces = Object.values(pieces).filter(
+      const allPiecesArr = Object.values(pieces);
+      const groupPieces = allPiecesArr.filter(
         (p) => p.groupId === draggedGroupId,
       );
 
-      // 1. Calculate Target Footprint (without modifying state yet)
+      // 1. Calculate Target Footprint
       const targetFootprint = groupPieces.map((p) => ({
         id: p.id,
         row: targetRow + (p.currentRow - anchorPiece.currentRow),
@@ -255,24 +297,24 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
         return { merged: false };
       }
 
-      // 3. Build the FULL occupied slots map (all pieces except dragged group)
+      // 3. Optimized Spatial Checks
+      // Build quick lookup for ALL pieces
+      // We need to check collisions against "everything else"
       const occupiedSlots = new Set<string>();
-      Object.values(pieces).forEach((p) => {
+      allPiecesArr.forEach((p) => {
         if (p.groupId !== draggedGroupId) {
           occupiedSlots.add(`${p.currentRow},${p.currentCol}`);
         }
       });
 
-      // 4. Add the TARGET footprint to occupied (where dragged group WILL be)
       const incomingSlots = new Set<string>();
       targetFootprint.forEach((f) => {
         incomingSlots.add(`${f.row},${f.col}`);
       });
 
-      // 5. Find Victim Pieces (individual pieces that overlap with incoming footprint)
-      // We no longer look for "Victim Groups" as a whole, but specific pieces.
+      // 5. Find Victim Pieces (Efficiently)
       const victimPieces: JigsawPiece[] = [];
-      Object.values(pieces).forEach((p) => {
+      allPiecesArr.forEach((p) => {
         if (
           p.groupId !== draggedGroupId &&
           incomingSlots.has(`${p.currentRow},${p.currentCol}`)
@@ -281,22 +323,33 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
         }
       });
 
-      // 6. SPLIT & SCATTER LOGIC (Refined)
+      // 6. SPLIT & SCATTER LOGIC
       const victimMoves: Map<number, { row: number; col: number }> = new Map();
       const simulatedOccupied = new Set(incomingSlots);
 
-      const victimPieceIds = new Set(victimPieces.map((p) => p.id));
-      Object.values(pieces).forEach((p) => {
-        if (p.groupId !== draggedGroupId && !victimPieceIds.has(p.id)) {
-          simulatedOccupied.add(`${p.currentRow},${p.currentCol}`);
+      // Add non-involved pieces to simulated occupied
+      allPiecesArr.forEach((p) => {
+        if (
+          p.groupId !== draggedGroupId &&
+          !incomingSlots.has(`${p.currentRow},${p.currentCol}`)
+        ) {
+          // Not in target zone (already handled by incoming) and not victim (will move)
+          // Wait, victim pieces ARE currently at `p.currentRow`.
+          // If p is NOT victim and NOT dragged group...
+          const isVictim = victimPieces.some((v) => v.id === p.id);
+          if (!isVictim) {
+            simulatedOccupied.add(`${p.currentRow},${p.currentCol}`);
+          }
         }
       });
+      // Correct logic: simulatedOccupied should contain:
+      // 1. Where dragged pieces WILL be (incomingSlots)
+      // 2. Where other pieces ARE (that aren't moving)
 
-      // Track ALL groups that need merge checks (dragged + displaced + merged-into)
       const groupsToCheck = new Set<string>();
       groupsToCheck.add(draggedGroupId);
 
-      // Process each individual victim piece
+      // Process victims
       for (const p of victimPieces) {
         const shift = findNearestEmptySlotForGroup(
           [p],
@@ -313,14 +366,14 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
           victimMoves.set(p.id, { row: newRow, col: newCol });
           simulatedOccupied.add(`${newRow},${newCol}`);
         } else {
-          return { merged: false };
+          return { merged: false }; // No space for victim
         }
       }
 
-      // 7. ALL VALIDATIONS PASSED - Apply changes atomically
+      // 7. Apply Changes (Atomic)
       const newMaxZIndex = state.maxZIndex + 10;
 
-      // Move dragged group
+      // Update Dragged Group
       targetFootprint.forEach((m) => {
         pieces[m.id] = {
           ...pieces[m.id],
@@ -330,7 +383,7 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
         };
       });
 
-      // Move and SPLIT victims
+      // Update Victims
       victimMoves.forEach((pos, pId) => {
         const newGroupId = `group-split-${Date.now()}-${pId}`;
         pieces[pId] = {
@@ -340,11 +393,10 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
           groupId: newGroupId,
           zIndex: state.maxZIndex + 1,
         };
-        // This displaced piece is now a candidate for merging!
         groupsToCheck.add(newGroupId);
       });
 
-      // 7b. FRACTURE CHECK
+      // 7b. FRACTURE CHECK (Optimized)
       const affectedGroupIds = new Set<string>();
       victimPieces.forEach((vp) => affectedGroupIds.add(vp.groupId));
 
@@ -354,7 +406,7 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
         );
         if (survivors.length <= 1) return;
 
-        // BFS for survivors...
+        // BFS for connectivity
         const visited = new Set<number>();
         const components: JigsawPiece[][] = [];
 
@@ -367,12 +419,17 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
           while (queue.length > 0) {
             const curr = queue.shift()!;
             component.push(curr);
+
+            // Check potential neighbors within survivors
             const neighbors = survivors.filter((n) => {
               if (visited.has(n.id)) return false;
-              const dRow = Math.abs(n.currentRow - curr.currentRow);
-              const dCol = Math.abs(n.currentCol - curr.currentCol);
-              return dRow + dCol === 1;
+              return (
+                Math.abs(n.currentRow - curr.currentRow) +
+                  Math.abs(n.currentCol - curr.currentCol) ===
+                1
+              );
             });
+
             for (const n of neighbors) {
               visited.add(n.id);
               queue.push(n);
@@ -387,81 +444,56 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
             components[i].forEach((p) => {
               pieces[p.id] = { ...pieces[p.id], groupId: newGroupId };
             });
-            // Fractured parts also need to be checked for merges?
-            // Primarily they just broke apart, but they didn't move.
-            // So they likely won't merge, but safe to add if we wanted.
-            // For now, let's trust they only broke.
           }
         }
       });
 
-      // 8. ROBUST MULTI-GROUP MERGE LOGIC
-      // Process list of groups. If A merges into B, A is done, but B might merge into C.
+      // 8. OPTIMIZED MERGE LOGIC (O(N) Lookups)
       let didMerge = false;
       const processedGroups = new Set<string>();
-
-      // Convert Set to Array to allow pushing new items during iteration?
-      // Better: use a simple array as a queue.
       const queue = Array.from(groupsToCheck);
+
+      // Re-build "allPiecesArr" and "posMap" because pieces have moved/fractured
+      let currentAllPieces = Object.values(pieces);
+
+      // OPTIMIZATION: Incremental posMap updates or rebuild only when dirty?
+      // Since map build is fast for <100 pieces, rebuilding is safer for correctness.
+      let posMap = buildPositionMap(pieces);
 
       while (queue.length > 0) {
         const currentGroupId = queue.shift()!;
         if (processedGroups.has(currentGroupId)) continue;
 
-        // Find members (might be empty if already merged)
-        const members = Object.values(pieces).filter(
+        // Get fresh members from current pieces state
+        const members = currentAllPieces.filter(
           (p) => p.groupId === currentGroupId,
         );
         if (members.length === 0) continue;
 
         let mergedThisRound = false;
 
-        // Check for connections
         for (const p of members) {
-          const neighbors = [
-            { r: p.currentRow - 1, c: p.currentCol },
-            { r: p.currentRow + 1, c: p.currentCol },
-            { r: p.currentRow, c: p.currentCol - 1 },
-            { r: p.currentRow, c: p.currentCol + 1 },
-          ];
+          const neighborPiece = getMergeableNeighbor(p, posMap, currentGroupId);
 
-          for (const n of neighbors) {
-            const neighborPiece = Object.values(pieces).find(
-              (np) =>
-                np.currentRow === n.r &&
-                np.currentCol === n.c &&
-                np.groupId !== currentGroupId,
-            );
+          if (neighborPiece) {
+            const targetGroupId = neighborPiece.groupId;
 
-            if (neighborPiece) {
-              const correctRowDiff = neighborPiece.correctRow - p.correctRow;
-              const correctColDiff = neighborPiece.correctCol - p.correctCol;
-              const actualRowDiff = neighborPiece.currentRow - p.currentRow;
-              const actualColDiff = neighborPiece.currentCol - p.currentCol;
+            // MERGE
+            members.forEach((m) => {
+              pieces[m.id] = { ...pieces[m.id], groupId: targetGroupId };
+            });
 
-              if (
-                correctRowDiff === actualRowDiff &&
-                correctColDiff === actualColDiff
-              ) {
-                // MERGE: Absorb interactions
-                const targetGroupId = neighborPiece.groupId;
+            didMerge = true;
+            mergedThisRound = true;
 
-                members.forEach((m) => {
-                  pieces[m.id] = { ...pieces[m.id], groupId: targetGroupId };
-                });
+            // Refresh data for next iterations
+            // Since we modified pieces, we must rebuild list and map to see new groupIds
+            currentAllPieces = Object.values(pieces);
+            posMap = buildPositionMap(pieces);
 
-                didMerge = true;
-                mergedThisRound = true;
-
-                // The 'currentGroupId' is now gone.
-                // The 'targetGroupId' has grown. It might bridge to something else!
-                // Add targetGroupId to queue to re-check it.
-                queue.push(targetGroupId);
-                break; // Break inner loop (neighbors)
-              }
-            }
+            queue.push(targetGroupId);
+            break; // Break member loop
           }
-          if (mergedThisRound) break; // Break members loop
         }
 
         if (!mergedThisRound) {
@@ -490,11 +522,18 @@ export const useJigsawStore = create<JigsawStore>((set, get) => ({
       set((state) => {
         if (state.status === "won") return {};
         const newPieces = { ...state.pieces };
+        let changed = false;
+
         Object.values(newPieces).forEach((p) => {
           if (p.groupId === groupId) {
-            newPieces[p.id].zIndex = state.maxZIndex + 1;
+            // IMMUTABLE UPDATE
+            newPieces[p.id] = { ...p, zIndex: state.maxZIndex + 1 };
+            changed = true;
           }
         });
+
+        if (!changed) return {};
+
         return { pieces: newPieces, maxZIndex: state.maxZIndex + 1 };
       });
     },
