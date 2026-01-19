@@ -30,6 +30,7 @@ export interface UserProgress {
   unlockedChapters: number[];
   completedLevels: Record<string, LevelProgress>;
   totalStars: number;
+  totalCoins?: number; // Added for coin system
   lastPlayed?: {
     chapterId: number;
     levelId: number;

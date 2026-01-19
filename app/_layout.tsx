@@ -14,7 +14,6 @@ import { initializeAds } from "../src/services/adManager";
 import { loginWithDevice } from "../src/services/authService";
 import { getDeviceId } from "../src/services/deviceService";
 import { useAdActions } from "../src/store/adStore";
-import { useHintActions } from "../src/store/hintStore";
 import { useProgressActions } from "../src/store/progressStore";
 
 const __DEV_MODE__ = true;
@@ -38,7 +37,6 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
   const progressActions = useProgressActions();
-  const hintActions = useHintActions();
   const adActions = useAdActions();
 
   useEffect(() => {
@@ -52,7 +50,6 @@ export default function RootLayout() {
 
         // THEN load progress (which needs auth.currentUser to fetch cloud data)
         await progressActions.loadProgress();
-        await hintActions.loadHints();
         await adActions.loadAdState();
 
         try {
@@ -105,12 +102,15 @@ export default function RootLayout() {
         persistOptions={{ persister: asyncStoragePersister }}
       >
         <View style={styles.container} onLayout={onLayoutRootView}>
-          <StatusBar style="light" />
+          <StatusBar style="dark" />
           <Stack
             screenOptions={{
               headerStyle: { backgroundColor: COLORS.surface },
-              headerTintColor: COLORS.textPrimary,
-              headerTitleStyle: { fontWeight: "600" },
+              headerTintColor: COLORS.textPrimary, // This is now white/dark depending on colors.ts
+              headerTitleStyle: {
+                fontWeight: "600",
+                color: COLORS.textPrimary,
+              },
               contentStyle: { backgroundColor: COLORS.background },
               headerShadowVisible: false,
             }}

@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
   headerStarText: {
     fontSize: 15,
     fontWeight: "800",
-    color: COLORS.textPrimary,
+    color: COLORS.primary,
   },
   listContent: { paddingBottom: 40 },
   card: {
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
   barBg: {
     flex: 1,
     height: 6,
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: "#e0e0e0",
     borderRadius: 3,
     overflow: "hidden",
   },

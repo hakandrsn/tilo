@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Puzzle Game",
-    "slug": "puzzle-game",
+    "name": "Tilo",
+    "slug": "tilo",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "puzzlegame",
+    "scheme": "tilo",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
@@ -15,10 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.eoist.puzzlegame"
+      "bundleIdentifier": "com.eoist.tilo"
     },
     "android": {
-      "package": "com.eoist.puzzlegame",
+      "package": "com.eoist.tilo",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0a0a0f"
@@ -59,10 +59,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "b35e8ced-defe-4118-828f-56967256d5a8"
-      }
+      "router": {}
     }
   }
 }

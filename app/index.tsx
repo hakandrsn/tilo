@@ -1,3 +1,4 @@
+import { Image } from "expo-image";
 import { Stack, useRouter } from "expo-router";
 import React from "react";
 import {
@@ -13,26 +14,26 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import {
   BOARD_PADDING,
   COLORS,
-  HINT_CONFIG,
   LEVELS_PER_CHAPTER,
   getResponsiveValue,
 } from "../src/constants/gameConfig";
-import { showRewarded } from "../src/services/adManager";
 import {
   useChapters,
   useDataActions,
   useIsDataLoading,
 } from "../src/store/dataStore";
-import { useHintActions, useHintCount } from "../src/store/hintStore";
-import { useLastPlayed, useTotalStars } from "../src/store/progressStore";
+import {
+  useLastPlayed,
+  useTotalCoins,
+  useTotalStars,
+} from "../src/store/progressStore";
 
 export default function StartScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const totalStars = useTotalStars();
+  const totalCoins = useTotalCoins();
   const lastPlayed = useLastPlayed();
-  const hintCount = useHintCount();
-  const hintActions = useHintActions();
   const chapters = useChapters();
   const { getChapters, getChapterById } = useDataActions();
   const isLoading = useIsDataLoading();
@@ -51,21 +52,14 @@ export default function StartScreen() {
 
   const handleContinue = () => {
     if (lastPlayed) {
-      router.push(`/game/${lastPlayed.chapterId}/${lastPlayed.levelId}`);
+      router.push(`/game/jigsaw/${lastPlayed.chapterId}/${lastPlayed.levelId}`);
     } else {
-      router.push("/game/1/1");
+      router.push("/game/jigsaw/1");
     }
   };
 
   const handleChapters = () => {
     router.push("/chapters");
-  };
-
-  const handleGetHints = async () => {
-    const success = await showRewarded();
-    if (success) {
-      hintActions.addHints(HINT_CONFIG.rewardedAdHints);
-    }
   };
 
   const lastChapter = lastPlayed ? getChapterById(lastPlayed.chapterId) : null;
@@ -74,22 +68,10 @@ export default function StartScreen() {
     <SafeAreaView style={styles.container}>
       <Stack.Screen
         options={{
-          headerShown: true,
+          headerShown: false,
           title: "",
           headerStyle: { backgroundColor: COLORS.background },
           headerShadowVisible: false,
-          headerRight: () => (
-            <TouchableOpacity
-              style={styles.hintButton}
-              onPress={handleGetHints}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.hintIcon}>💡</Text>
-              <View style={styles.hintBadge}>
-                <Text style={styles.hintBadgeText}>{hintCount}</Text>
-              </View>
-            </TouchableOpacity>
-          ),
         }}
       />
 
@@ -99,37 +81,11 @@ export default function StartScreen() {
           entering={FadeInDown.delay(100).springify()}
           style={styles.logoContainer}
         >
-          <View style={styles.logoIcon}>
-            <View style={styles.logoGrid}>
-              {[...Array(9)].map((_, i) => (
-                <View
-                  key={i}
-                  style={[
-                    styles.logoTile,
-                    i === 8 ? styles.logoTileEmpty : null,
-                  ]}
-                />
-              ))}
-            </View>
-          </View>
-          <Text style={styles.title}>PUZZLE</Text>
+          <Image
+            source={require("../src/assets/images/splash-icon.png")}
+            style={styles.logo}
+          />
         </Animated.View>
-
-        {/* Stats Row */}
-        <Animated.View
-          entering={FadeInDown.delay(200).springify()}
-          style={styles.statsRow}
-        >
-          <View style={styles.statBadge}>
-            <Text style={styles.statIcon}>★</Text>
-            <Text style={styles.statValue}>{totalStars}</Text>
-          </View>
-          <View style={styles.statBadge}>
-            <Text style={styles.statIcon}>💡</Text>
-            <Text style={styles.statValue}>{hintCount}</Text>
-          </View>
-        </Animated.View>
-
         {/* Buttons */}
         <Animated.View
           entering={FadeInUp.delay(300).springify()}
@@ -170,22 +126,18 @@ export default function StartScreen() {
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Progress */}
         <Animated.View
           entering={FadeInUp.delay(400)}
           style={styles.progressContainer}
         >
-          <View style={styles.progressBar}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${(totalStars / maxStars) * 100}%` },
-              ]}
-            />
+          <View style={styles.statBadge}>
+            <Text style={styles.statIcon}>★</Text>
+            <Text style={styles.statValue}>{totalStars}</Text>
           </View>
-          <Text style={styles.progressText}>
-            {totalStars} / {maxStars} yıldız
-          </Text>
+          <View style={styles.statBadge}>
+            <Text style={styles.statIcon}>🪙</Text>
+            <Text style={styles.statValue}>{totalCoins}</Text>
+          </View>
         </Animated.View>
       </View>
     </SafeAreaView>
@@ -202,67 +154,43 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: BOARD_PADDING,
+    gap: 24, // Add gap to distribute content better
   },
   logoContainer: {
     alignItems: "center",
-    marginBottom: 32,
   },
-  logoIcon: {
-    width: 88,
-    height: 88,
-    backgroundColor: COLORS.surface,
-    borderRadius: 20,
-    padding: 12,
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: COLORS.primary,
+  logo: {
+    width: 140,
+    height: 140,
+    objectFit: "contain",
   },
-  logoGrid: {
-    flex: 1,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 4,
-  },
-  logoTile: {
-    width: "30%",
-    aspectRatio: 1,
-    backgroundColor: COLORS.primary,
-    borderRadius: 4,
-  },
-  logoTileEmpty: {
-    backgroundColor: "transparent",
-  },
-  title: {
-    fontSize: 42,
-    fontWeight: "800",
-    color: COLORS.textPrimary,
-    letterSpacing: 6,
-  },
-  statsRow: {
+  progressContainer: {
     flexDirection: "row",
     gap: 16,
-    marginBottom: 48,
+    justifyContent: "center",
+    marginTop: 20,
   },
   statBadge: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: COLORS.surface,
-    paddingVertical: 10,
+    paddingVertical: 8,
     paddingHorizontal: 16,
-    borderRadius: 24,
+    borderRadius: 20,
     gap: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   statIcon: {
-    fontSize: 18,
+    fontSize: 16,
   },
   statValue: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
     color: COLORS.textPrimary,
   },
   buttonsContainer: {
     gap: 12,
-    marginBottom: 48,
   },
   continueButton: {
     backgroundColor: COLORS.primary,
@@ -309,56 +237,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   chaptersCount: {
-    color: COLORS.textSecondary,
+    color: COLORS.textPrimary,
     fontSize: 14,
-    backgroundColor: COLORS.surfaceLight,
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
-  },
-  progressContainer: {
-    alignItems: "center",
-    width: "60%",
-  },
-  progressBar: {
-    width: "100%",
-    height: 4,
-    backgroundColor: COLORS.surface,
-    borderRadius: 2,
-    overflow: "hidden",
-    marginBottom: 8,
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: COLORS.starFilled,
-    borderRadius: 2,
-  },
-  progressText: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-  },
-  hintButton: {
-    marginRight: 12,
-    position: "relative",
-  },
-  hintIcon: {
-    fontSize: 28,
-  },
-  hintBadge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    backgroundColor: COLORS.accent,
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 4,
-  },
-  hintBadgeText: {
-    color: COLORS.textPrimary,
-    fontSize: 11,
-    fontWeight: "900",
   },
 });

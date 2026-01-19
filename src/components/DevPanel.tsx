@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
   floatingButtonText: { fontSize: 20 },
   overlay: {
     flex: 1,
-    backgroundColor: COLORS.overlay,
+    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
@@ -277,12 +277,12 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 320,
     borderWidth: 2,
-    borderColor: "#ef4444",
+    borderColor: COLORS.border,
   },
   title: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#ef4444",
+    color: COLORS.primaryText,
     textAlign: "center",
     marginBottom: 20,
   },

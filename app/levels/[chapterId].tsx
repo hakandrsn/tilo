@@ -171,7 +171,7 @@ export default function LevelsScreen() {
         progress={progress}
         cardSize={cardSize}
         chapterColor={chapter.color}
-        onPress={() => router.push(`/game/${chapterId}/${item.id}`)}
+        onPress={() => router.push(`/game/jigsaw/${chapterId}/${item.id}`)}
       />
     );
   };

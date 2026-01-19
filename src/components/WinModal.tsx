@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    backgroundColor: COLORS.overlay,
+    backgroundColor: "rgba(0,0,0,0.85)",
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   secondaryButton: {
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: "#e0e0e0", // Light gray for secondary button
   },
   secondaryButtonText: {
     color: COLORS.textPrimary,

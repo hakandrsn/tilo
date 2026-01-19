@@ -21,14 +21,14 @@ interface ProgressActions {
     chapterId: number,
     levelId: number,
     moves: number,
-    gridSize: GridSize
+    gridSize: GridSize,
   ) => void;
   setLastPlayed: (chapterId: number, levelId: number) => void;
   isLevelUnlocked: (chapterId: number, levelId: number) => boolean;
   isChapterUnlocked: (chapterId: number) => boolean;
   getLevelProgress: (
     chapterId: number,
-    levelId: number
+    levelId: number,
   ) => LevelProgress | null;
   getChapterProgress: (chapterId: number) => {
     completed: number;
@@ -46,6 +46,7 @@ const createInitialProgress = (): UserProgress => ({
   unlockedChapters: [1],
   completedLevels: {},
   totalStars: 0,
+  totalCoins: 0,
   lastPlayed: undefined,
 });
 
@@ -72,7 +73,7 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
             const cloudData = userDoc.data();
             console.log(
               "☁️ Raw cloud data:",
-              JSON.stringify(cloudData, null, 2)
+              JSON.stringify(cloudData, null, 2),
             );
 
             // Convert flat Firestore structure to nested object
@@ -106,20 +107,21 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
             const nestedData = convertFlatToNested(cloudData);
             console.log(
               "🔄 Converted to nested:",
-              JSON.stringify(nestedData, null, 2)
+              JSON.stringify(nestedData, null, 2),
             );
 
             // Ensure we have all required fields with defaults
             const cloudProgress: UserProgress = {
               completedLevels: nestedData?.progress?.completedLevels || {},
               totalStars: nestedData?.progress?.totalStars || 0,
+              totalCoins: nestedData?.progress?.totalCoins || 0,
               unlockedChapters: nestedData?.progress?.unlockedChapters || [1],
               lastPlayed: nestedData?.progress?.lastPlayed,
             };
 
             console.log("📊 Parsed cloudProgress:", {
               completedLevelsCount: Object.keys(
-                cloudProgress.completedLevels || {}
+                cloudProgress.completedLevels || {},
               ).length,
               totalStars: cloudProgress.totalStars,
               unlockedChapters: cloudProgress.unlockedChapters,
@@ -136,7 +138,7 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
               set({ progress: cloudProgress, isLoaded: true });
               await AsyncStorage.setItem(
                 STORAGE_KEYS.USER_PROGRESS,
-                JSON.stringify(cloudProgress)
+                JSON.stringify(cloudProgress),
               );
             } else {
               console.log("⚠️ Cloud progress empty, keeping local data");
@@ -160,7 +162,7 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
       chapterId: number,
       levelId: number,
       moves: number,
-      gridSize: GridSize
+      gridSize: GridSize,
     ) => {
       const { progress } = get();
       const levelKey = getLevelKey(chapterId, levelId);
@@ -182,6 +184,21 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
       let newChapterUnlocked = false;
       let nextChapterId = chapterId + 1;
 
+      // Coin Logic: Every 4 UNIQUE levels completed = 1 Coin
+      const wasBrandNewLevel = !existingProgress || !existingProgress.completed;
+      const currentCompletedCount = Object.values(
+        progress.completedLevels,
+      ).filter((l) => l.completed).length;
+
+      let coinBonus = 0;
+      if (wasBrandNewLevel) {
+        // We just completed a new level.
+        const newTotalCompleted = currentCompletedCount + 1;
+        if (newTotalCompleted % 4 === 0) {
+          coinBonus = 1;
+        }
+      }
+
       let newProgress = {
         ...progress,
         completedLevels: {
@@ -189,6 +206,7 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
           [levelKey]: newLevelProgress,
         },
         totalStars: progress.totalStars + starDiff,
+        totalCoins: (progress.totalCoins || 0) + coinBonus,
       };
 
       if (
@@ -207,7 +225,7 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
       // Update Local Storage
       await AsyncStorage.setItem(
         STORAGE_KEYS.USER_PROGRESS,
-        JSON.stringify(newProgress)
+        JSON.stringify(newProgress),
       );
 
       // Update Cloud with proper nested structure
@@ -221,6 +239,7 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
                 [levelKey]: newLevelProgress,
               },
               totalStars: newProgress.totalStars,
+              totalCoins: newProgress.totalCoins,
               unlockedChapters: newProgress.unlockedChapters,
             },
             lastUpdated: new Date().toISOString(),
@@ -240,7 +259,7 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
             chapterId,
             levelId,
             newLevelProgress.bestMoves,
-            newLevelProgress.stars
+            newLevelProgress.stars,
           );
         }
       }
@@ -254,7 +273,7 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
       set({ progress: newProgress });
       await AsyncStorage.setItem(
         STORAGE_KEYS.USER_PROGRESS,
-        JSON.stringify(newProgress)
+        JSON.stringify(newProgress),
       );
 
       const user = auth.currentUser;
@@ -268,7 +287,7 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
               },
               lastUpdated: new Date().toISOString(),
             },
-            { merge: true }
+            { merge: true },
           );
         } catch (e) {
           console.error("Last played save error:", e);
@@ -319,7 +338,7 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
     // Kept for interface compatibility but warns
     saveProgress: async () => {
       console.warn(
-        "Generic saveProgress is deprecated to prevent data loss. Use granular actions."
+        "Generic saveProgress is deprecated to prevent data loss. Use granular actions.",
       );
     },
   },
@@ -329,5 +348,7 @@ export const useProgressActions = () =>
   useProgressStore((state) => state.actions);
 export const useTotalStars = () =>
   useProgressStore((state) => state.progress.totalStars);
+export const useTotalCoins = () =>
+  useProgressStore((state) => state.progress.totalCoins || 0);
 export const useLastPlayed = () =>
   useProgressStore((state) => state.progress.lastPlayed);
