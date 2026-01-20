@@ -142,7 +142,6 @@ export const AD_CONFIG = __DEV__ ? TEST_AD_CONFIG : PROD_AD_CONFIG;
 
 export const STORAGE_KEYS = {
   USER_PROGRESS: "@puzzle_game_progress",
-  HINT_COUNT: "@puzzle_game_hints",
   LAST_PLAYED: "@puzzle_game_last_played",
   DEVICE_ID: "@puzzle_game_device_id",
   LEVEL_STATE: "@puzzle_game_level_state",
