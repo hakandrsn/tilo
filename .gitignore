@@ -44,3 +44,5 @@ yarn-error.*
 *.ipa
 *.aab
 *.apk
+
+repomix-output.xml
