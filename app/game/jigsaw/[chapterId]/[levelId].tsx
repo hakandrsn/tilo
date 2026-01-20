@@ -32,8 +32,10 @@ import { useAdStore } from "@/src/store/adStore";
 import { useDataActions } from "@/src/store/dataStore";
 
 // Components
+import BackgroundMusic from "@/src/components/BackgroundMusic";
 import GameBannerAd from "@/src/components/GameBannerAd";
 import GameSettingsMenu from "@/src/components/GameSettingsMenu";
+import { useClickSound } from "@/src/hooks/useClickSound";
 import JigsawBoard from "@/src/modules/jigsaw/JigsawBoard";
 import { showInterstitial } from "@/src/services/adManager";
 import { useProgressActions } from "@/src/store/progressStore";
@@ -41,6 +43,9 @@ import { Level } from "@/src/types";
 
 export default function JigsawGameScreen() {
   const router = useRouter();
+
+  // Sounds
+  const { playClick } = useClickSound();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -176,52 +181,8 @@ export default function JigsawGameScreen() {
     router.back();
   };
 
-  const handleNextLevel = async () => {
-    if (!level) return;
-
-    // 1. Determine Next Level IDs
-    let nextChapter = currentChapter;
-    let nextLevelId = currentLevelId + 1;
-
-    if (nextLevelId > LEVELS_PER_CHAPTER) {
-      nextChapter++;
-      nextLevelId = 1;
-    }
-
-    if (nextChapter > TOTAL_CHAPTERS) {
-      // Last level - save progress and go back
-      completeLevel(currentChapter, currentLevelId, moves, level.gridSize);
-      router.back();
-      return;
-    }
-
-    // 2. Save progress FIRST (level completed)
-    completeLevel(currentChapter, currentLevelId, moves, level.gridSize);
-
-    // 3. Start preparing next level data in BACKGROUND
-    const nextLevelPromise = getLevelById(nextChapter, nextLevelId);
-
-    // 4. Show Interstitial Ad - wait for it to CLOSE
-    const adWatched = await showInterstitial();
-
-    if (!adWatched) {
-      // Ad failed - still continue (progress already saved)
-      console.log("Ad not shown, continuing anyway");
-    }
-
-    // 5. Get next level data (should be ready from background fetch)
-    const nextLvlData = await nextLevelPromise;
-
-    if (!nextLvlData) {
-      setIsLoading(false);
-      return;
-    }
-
-    // 6. Now do the transition - AD IS CLOSED, game will start fresh
-    setPrevLevel(level);
-    scrollTranslateY.value = withTiming(-height, { duration: 500 });
-
-    // 7. Reset Win UI
+  // Helper: Win UI resetleme kodunu ayır (Clean Code)
+  const resetWinUI = () => {
     setShowContinue(false);
     setEarnedStars(0);
     headerTranslateY.value = 0;
@@ -232,20 +193,84 @@ export default function JigsawGameScreen() {
     star1Scale.value = 0;
     star2Scale.value = 0;
     star3Scale.value = 0;
+  };
 
-    // 8. Initialize new level - board will remount with key change
-    resetGame();
-    initializeLevel(nextLvlData.gridSize);
-    setLevel(nextLvlData);
-    setCurrentChapter(nextChapter);
-    setCurrentLevelId(nextLevelId);
-    // Update last played for the new level
-    setLastPlayed(nextChapter, nextLevelId);
+  const handleNextLevel = async () => {
+    playClick();
+    if (!level) return;
 
-    // 9. Clean up after scroll completes
+    // 1. Sonraki Level ID'lerini hesapla
+    let nextChapter = currentChapter;
+    let nextLevelId = currentLevelId + 1;
+
+    if (nextLevelId > LEVELS_PER_CHAPTER) {
+      nextChapter++;
+      nextLevelId = 1;
+    }
+
+    // Chapter bittiyse çık (Mevcut mantığın)
+    if (nextChapter > TOTAL_CHAPTERS) {
+      router.back();
+      return;
+    }
+
+    // -----------------------------------------------------------
+    // SENIOR DOKUNUŞU 1: "Fire and Forget"
+    // Mevcut level'ı kaydet ama bunu await etme, UI bloklanmasın.
+    // -----------------------------------------------------------
+    completeLevel(currentChapter, currentLevelId, moves, level.gridSize);
+
+    // -----------------------------------------------------------
+    // SENIOR DOKUNUŞU 2: "Parallel Prefetching"
+    // Reklam başlamadan hemen önce veriyi ve resmi çağırmaya başla.
+    // -----------------------------------------------------------
+    const nextLevelPromise = getLevelById(nextChapter, nextLevelId);
+
+    // Reklamı başlat (Bu sırada nextLevelPromise arkada resolve oluyor)
+    const adWatched = await showInterstitial();
+
+    // Reklam bitti. Verimiz %99 ihtimalle hazır.
+    const nextLvlData = await nextLevelPromise;
+
+    if (!nextLvlData) {
+      setIsLoading(false);
+      return;
+    }
+
+    // Resim cache'de mi? Değilse hemen prefetch at (Hızlı yükleme için)
+    if (
+      typeof nextLvlData.imageSource === "object" &&
+      "uri" in nextLvlData.imageSource &&
+      nextLvlData.imageSource.uri
+    ) {
+      await Image.prefetch(nextLvlData.imageSource.uri);
+    }
+
+    // -----------------------------------------------------------
+    // SENIOR DOKUNUŞU 3: "Clean Slate" (Eski Tahtayı Yok Et)
+    // Yeni level hesaplanırken eski tahtanın görünmemesi için
+    // level state'ini geçici olarak boşaltıyoruz.
+    // -----------------------------------------------------------
+    setLevel(undefined); // <--- BU SATIR "HAYALET TAHTA"YI ÖNLER
+    setIsLoading(true); // Araya minik bir loading girsin, donmasından iyidir.
+
+    // UI Thread nefes alsın diye state update'i bir sonraki tick'e atıyoruz
     setTimeout(() => {
-      cleanUpTransition();
-    }, 550);
+      // UI Temizliği
+      resetWinUI();
+
+      // Yeni Oyun Başlatma
+      resetGame();
+      initializeLevel(nextLvlData.gridSize);
+
+      // State Güncellemeleri
+      setCurrentChapter(nextChapter);
+      setCurrentLevelId(nextLevelId);
+      setLevel(nextLvlData); // <--- Yeni level şimdi render olacak
+      setLastPlayed(nextChapter, nextLevelId);
+
+      setIsLoading(false);
+    }, 50); // 50ms gecikme insan gözüne batmaz ama JS thread'i kurtarır.
   };
 
   const cleanUpTransition = () => {
@@ -323,7 +348,10 @@ export default function JigsawGameScreen() {
   if (isLoading && !level) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.accent} />
+        <View style={styles.loadingBox}>
+          <ActivityIndicator size="large" color={COLORS.accent} />
+          <Text style={styles.loadingText}>Level Hazırlanıyor...</Text>
+        </View>
       </View>
     );
   }
@@ -333,6 +361,7 @@ export default function JigsawGameScreen() {
       style={{ flex: 1, backgroundColor: COLORS.background }}
     >
       <Stack.Screen options={{ headerShown: false }} />
+      <BackgroundMusic />
 
       {/* Main Vertical Scroll Container */}
       <Animated.View style={[{ flex: 1 }, scrollStyle]}>
@@ -488,7 +517,7 @@ export default function JigsawGameScreen() {
               boardAnimatedStyle,
             ]}
           >
-            {level && (
+            {level ? (
               <JigsawBoard
                 key={`${currentChapter}-${currentLevelId}`} // Force remount on level change
                 gridSize={level.gridSize}
@@ -496,6 +525,26 @@ export default function JigsawGameScreen() {
                 boardWidth={width}
                 boardHeight={boardHeight}
               />
+            ) : (
+              // Eski tahta yerine bu görünecek. Ghosting bitti.
+              <View
+                style={{
+                  flex: 1,
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                <ActivityIndicator size="large" color={COLORS.accent} />
+                <Text
+                  style={{
+                    color: COLORS.textSecondary,
+                    marginTop: 10,
+                    fontSize: 16,
+                  }}
+                >
+                  Sahne Hazırlanıyor...
+                </Text>
+              </View>
             )}
           </Animated.View>
 
@@ -570,6 +619,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: COLORS.background,
+  },
+  loadingBox: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 24,
+    alignItems: "center",
+    gap: 12,
+    minWidth: 150,
+  },
+  loadingText: {
+    color: COLORS.textPrimary,
+    fontSize: 16,
+    fontWeight: "600",
   },
   header: {
     position: "absolute",

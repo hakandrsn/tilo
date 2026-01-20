@@ -128,10 +128,7 @@ const JigsawBoard: React.FC<JigsawBoardProps> = ({
 
   return (
     <View
-      style={[
-        styles.container,
-        { width: boardWidth, height: boardHeight + 200 },
-      ]}
+      style={[styles.container, { width: boardWidth, height: boardHeight }]}
     >
       <View
         style={{

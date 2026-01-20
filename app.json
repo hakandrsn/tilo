@@ -24,17 +24,24 @@
       "policy": "appVersion"
     },
     "ios": {
+      "buildNumber": "1",
       "supportsTablet": true,
-      "bundleIdentifier": "com.eoist.tilo"
+      "bundleIdentifier": "com.eoist.tilo",
+      "infoPlist": {
+        "NSUserTrackingUsageDescription": "Bu izin, size ilgi alanlarınıza uygun reklamlar göstermek için kullanılacaktır."
+      },
+      "entitlements": {
+        "com.apple.developer.networking.wifi-info": true
+      }
     },
     "android": {
+      "versionCode": 1,
       "package": "com.eoist.tilo",
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/images/adaptive-icon.png",
         "backgroundColor": "#0a0a0f"
       },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "edgeToEdgeEnabled": true
     },
     "web": {
       "bundler": "metro",
@@ -63,7 +70,15 @@
             "useFrameworks": "static"
           }
         }
-      ]
+      ],
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "Bu izin, size ilgi alanlarınıza uygun reklamlar göstermek için kullanılacaktır."
+        }
+      ],
+      "expo-audio",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true

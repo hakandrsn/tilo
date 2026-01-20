@@ -14,6 +14,10 @@ import {
 } from "react-native";
 import { db } from "../../firebaseConfig";
 import { COLORS, getGridSizeForLevel } from "../constants/gameConfig";
+import {
+  updateAllChaptersGridSize,
+  updateChapterLevelsGridSize,
+} from "../services/dataService";
 import { useGameStore } from "../store/gameStore";
 import { useHintActions } from "../store/hintStore";
 import { useProgressActions } from "../store/progressStore";
@@ -94,7 +98,7 @@ const DevPanel: React.FC = () => {
   const goToLevel = () => {
     const cId = parseInt(chapterId) || 1;
     const lId = parseInt(levelId) || 1;
-    router.push(`/game/${cId}/${lId}`);
+    router.push(`/game/jigsaw/${cId}/${lId}`);
     setIsOpen(false);
   };
 
@@ -232,6 +236,47 @@ const DevPanel: React.FC = () => {
               >
                 <Text style={styles.buttonText}>Firebase'a Yükle (Levels)</Text>
               </TouchableOpacity>
+
+              <View style={styles.divider} />
+
+              <Text style={styles.sectionTitle}>Grid Boyutlarını Güncelle</Text>
+              <TouchableOpacity
+                style={[styles.button, styles.updateButton]}
+                onPress={async () => {
+                  try {
+                    await updateChapterLevelsGridSize(parseInt(chapterId));
+                    Alert.alert(
+                      "Başarılı",
+                      `Chapter ${chapterId} gridleri güncellendi!`,
+                    );
+                  } catch (e) {
+                    Alert.alert("Hata", "Güncelleme başarısız.");
+                  }
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.buttonText}>
+                  Chapter {chapterId} Gridlerini Güncelle
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.button, styles.updateButton, { marginTop: 8 }]}
+                onPress={async () => {
+                  try {
+                    await updateAllChaptersGridSize();
+                    Alert.alert(
+                      "Başarılı",
+                      "TÜM Chapter gridleri güncellendi!",
+                    );
+                  } catch (e) {
+                    Alert.alert("Hata", "Toplu güncelleme başarısız.");
+                  }
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.buttonText}>TÜM Chapterları Güncelle</Text>
+              </TouchableOpacity>
             </View>
 
             <TouchableOpacity
@@ -316,9 +361,11 @@ const styles = StyleSheet.create({
   hintButton: { backgroundColor: COLORS.accent },
   clearButton: { backgroundColor: "#ef4444" },
   migrateButton: { backgroundColor: "#6366f1" },
+  updateButton: { backgroundColor: "#eab308" }, // Yellow/Amber for update
   buttonText: { color: COLORS.textPrimary, fontSize: 14, fontWeight: "600" },
   closeButton: { paddingVertical: 12, alignItems: "center" },
   closeButtonText: { color: COLORS.textMuted, fontSize: 14 },
+  divider: { height: 1, backgroundColor: COLORS.border, marginVertical: 12 },
 });
 
 export default DevPanel;

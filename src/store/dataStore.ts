@@ -64,6 +64,14 @@ export const useDataStore = create<DataStore>((set, get) => ({
   },
 }));
 
+// Stable empty array to prevent infinite re-renders
+const EMPTY_LEVELS: Level[] = [];
+
 export const useChapters = () => useDataStore((state) => state.chapters);
 export const useDataActions = () => useDataStore((state) => state.actions);
 export const useIsDataLoading = () => useDataStore((state) => state.isLoading);
+
+// Selector for levels by chapter - prevents re-renders when other chapters update
+// CRITICAL: Must return a stable reference (not a new array [] on each call)
+export const useLevelsByChapter = (chapterId: number) =>
+  useDataStore((state) => state.levelsCache[chapterId] ?? EMPTY_LEVELS);

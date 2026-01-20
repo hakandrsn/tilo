@@ -1,5 +1,21 @@
+import {
+  BOARD_PADDING,
+  COLORS,
+  getResponsiveValue,
+} from "@/src/constants/gameConfig";
+import { useClickSound } from "@/src/hooks/useClickSound";
+import { useAdActions } from "@/src/store/adStore";
+import { useChapters, useDataActions } from "@/src/store/dataStore";
+import {
+  useLastPlayed,
+  useProgressActions,
+  useProgressStore,
+  useTotalCoins,
+  useTotalStars,
+} from "@/src/store/progressStore";
 import { Image } from "expo-image";
 import { Stack, useRouter } from "expo-router";
+import { requestTrackingPermissionsAsync } from "expo-tracking-transparency";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -15,19 +31,6 @@ import Animated, {
   ZoomIn,
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
-import {
-  BOARD_PADDING,
-  COLORS,
-  getResponsiveValue,
-} from "../src/constants/gameConfig";
-import { useAdActions } from "../src/store/adStore";
-import { useChapters, useDataActions } from "../src/store/dataStore";
-import {
-  useLastPlayed,
-  useProgressActions,
-  useTotalCoins,
-  useTotalStars,
-} from "../src/store/progressStore";
 
 export default function StartScreen() {
   const router = useRouter();
@@ -39,14 +42,31 @@ export default function StartScreen() {
   const lastPlayed = useLastPlayed();
   const chapters = useChapters();
 
+  // Check if user has any progress (completed levels)
+  const hasProgress = useProgressStore(
+    (state) => Object.keys(state.progress.completedLevels).length > 0,
+  );
+
   // Actions
   const { getChapters, getLevelById } = useDataActions();
   const { loadProgress } = useProgressActions();
   const { loadAdState } = useAdActions();
 
+  // Sounds
+  const { playClick } = useClickSound();
+
   const { getNextPlayableLevel } = useProgressActions();
 
   const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { status } = await requestTrackingPermissionsAsync();
+      if (status === "granted") {
+        console.log("Yay! I have user permission to track data");
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     const initGame = async () => {
@@ -97,17 +117,25 @@ export default function StartScreen() {
   });
 
   const handleContinue = async () => {
-    console.time("👉 Continue Button Press");
-    // Always calculate fresh target to ensure accuracy
-    const target = getNextPlayableLevel();
-    console.log("📍 Navigating to:", target);
+    playClick();
 
-    // Navigate
-    router.push(`/game/jigsaw/${target.chapterId}/${target.levelId}`);
+    try {
+      // Always calculate fresh target, fallback to 1-1 if undefined
+      const target = getNextPlayableLevel() || { chapterId: 1, levelId: 1 };
 
-    // Optimization: Yield to main thread to allow navigation animation to start
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    console.timeEnd("👉 Continue Button Press");
+      // Guarantee we have valid values
+      const chapterId = target.chapterId || 1;
+      const levelId = target.levelId || 1;
+
+      console.log("📍 Navigating to:", chapterId, levelId);
+
+      // Navigate - this will always execute
+      router.push(`/game/jigsaw/${chapterId}/${levelId}`);
+    } catch (error) {
+      console.error("Navigation error:", error);
+      // Fallback: go to first level on any error
+      router.push("/game/jigsaw/1/1");
+    }
   };
 
   const handleChapters = () => {
@@ -126,6 +154,18 @@ export default function StartScreen() {
       />
 
       <View style={styles.content}>
+        {/* TEXT (ilo) */}
+        <View style={styles.titleTextContainer}>
+          {["T", "i", "l", "o"].map((word, index) => (
+            <Animated.Text
+              key={word}
+              entering={FadeInRight.delay((index + 1) * 300).springify()}
+              style={styles.titleText}
+            >
+              {word}
+            </Animated.Text>
+          ))}
+        </View>
         {/* LOGO & TITLE ANIMATION */}
         <View style={styles.logoGroup}>
           {/* ICON (T) */}
@@ -136,28 +176,6 @@ export default function StartScreen() {
               contentFit="contain"
             />
           </Animated.View>
-
-          {/* TEXT (ilo) */}
-          <View style={styles.titleTextContainer}>
-            <Animated.Text
-              entering={FadeInRight.delay(400).springify()}
-              style={styles.titleText}
-            >
-              i
-            </Animated.Text>
-            <Animated.Text
-              entering={FadeInRight.delay(600).springify()}
-              style={styles.titleText}
-            >
-              l
-            </Animated.Text>
-            <Animated.Text
-              entering={FadeInRight.delay(800).springify()}
-              style={styles.titleText}
-            >
-              o
-            </Animated.Text>
-          </View>
         </View>
 
         {/* Buttons - Only show when ready? Or show loading? */}
@@ -180,16 +198,14 @@ export default function StartScreen() {
                 activeOpacity={0.8}
               >
                 <View style={styles.continueContent}>
-                  <Text style={styles.continueTitle}>Devam Et</Text>
-                  {lastPlayed ? (
-                    <Text style={styles.continueSubtitle}>
-                      Kaldığınız yerden devam edin
-                    </Text>
-                  ) : (
-                    <Text style={styles.continueSubtitle}>
-                      Yeni Oyun Başlat
-                    </Text>
-                  )}
+                  <Text style={styles.continueTitle}>
+                    {hasProgress ? "Devam Et" : "Başla"}
+                  </Text>
+                  <Text style={styles.continueSubtitle}>
+                    {hasProgress
+                      ? "Kaldığınız yerden devam edin"
+                      : "Yeni Oyun Başlat"}
+                  </Text>
                 </View>
                 <Text style={styles.continueArrow}>→</Text>
               </TouchableOpacity>
@@ -241,11 +257,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 20,
   },
   logoIcon: {
-    width: 60,
-    height: 60,
+    width: 120,
+    height: 120,
     marginRight: 2, // Slight gap between Icon T and ilo
   },
   titleTextContainer: {

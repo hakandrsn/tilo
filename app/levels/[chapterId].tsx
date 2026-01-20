@@ -1,5 +1,5 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -14,8 +14,15 @@ import {
   COLORS,
   getResponsiveValue,
 } from "../../src/constants/gameConfig";
-import { useDataActions, useIsDataLoading } from "../../src/store/dataStore";
-import { useProgressActions } from "../../src/store/progressStore";
+import {
+  useDataActions,
+  useIsDataLoading,
+  useLevelsByChapter,
+} from "../../src/store/dataStore";
+import {
+  useProgressActions,
+  useProgressStore,
+} from "../../src/store/progressStore";
 import { Level, LevelProgress } from "../../src/types";
 
 interface LevelCardProps {
@@ -113,21 +120,113 @@ export default function LevelsScreen() {
   const { width } = useWindowDimensions();
   const { chapterId } = useLocalSearchParams<{ chapterId: string }>();
   const progressActions = useProgressActions();
+  // Subscribe to progress changes using selector for performance
+  const userProgress = useProgressStore((state) => state.progress);
+
   const { top } = useSafeAreaInsets();
 
   const { getLevels, getChapterById } = useDataActions();
   const isLoading = useIsDataLoading();
-  const [levels, setLevels] = React.useState<Level[]>([]);
+
+  // Loading state for level navigation
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  // Use store selector instead of local state - prevents re-fetch on remount
+  const levels = useLevelsByChapter(Number(chapterId));
   const chapter = getChapterById(Number(chapterId));
 
+  // Fetch levels only if not in cache
   useEffect(() => {
-    const loadLevels = async () => {
-      const fetchedLevels = await getLevels(Number(chapterId));
-      setLevels(fetchedLevels);
-    };
-    loadLevels();
-  }, [chapterId]);
+    if (levels.length === 0) {
+      getLevels(Number(chapterId));
+    }
+  }, [chapterId, getLevels, levels.length]);
 
+  // Layout calculations - needed by hooks, must be before any conditional returns
+  const numColumns = getResponsiveValue(width, { phone: 4, tablet: 6 });
+  const padding = BOARD_PADDING;
+  const gap = 10;
+  const cardSize = (width - padding * 2 - gap * (numColumns - 1)) / numColumns;
+
+  /* Calculate Chapter Progress Reactive */
+  const chapterProgress = React.useMemo(() => {
+    let completed = 0;
+    let stars = 0;
+    for (let i = 1; i <= 24; i++) {
+      const key = `${chapterId}-${i}`;
+      const p = userProgress.completedLevels[key];
+      if (p?.completed) {
+        completed++;
+        stars += p.stars;
+      }
+    }
+    return { completed, total: 24, stars };
+  }, [userProgress.completedLevels, chapterId]);
+
+  // Handle level navigation with loading state
+  const handleLevelPress = useCallback(
+    (levelId: number) => {
+      setIsNavigating(true);
+      // Small delay to show loading, then navigate
+      setTimeout(() => {
+        router.push(`/game/jigsaw/${chapterId}/${levelId}`);
+        // Reset after navigation starts
+        setTimeout(() => setIsNavigating(false), 500);
+      }, 100);
+    },
+    [router, chapterId],
+  );
+
+  // Memoized renderLevel - ALL HOOKS MUST BE BEFORE EARLY RETURNS
+  const renderLevel = useCallback(
+    ({ item, index }: { item: Level; index: number }) => {
+      if (!chapter) return null;
+
+      const levelKey = `${chapter.id}-${item.id}`;
+      const levelProgress = userProgress.completedLevels[levelKey] || null;
+
+      let isUnlocked = false;
+      if (userProgress.unlockedChapters.includes(chapter.id)) {
+        if (item.id === 1) isUnlocked = true;
+        else {
+          const prevKey = `${chapter.id}-${item.id - 1}`;
+          isUnlocked =
+            userProgress.completedLevels[prevKey]?.completed ?? false;
+        }
+      }
+
+      return (
+        <LevelCard
+          level={item}
+          index={index}
+          isUnlocked={isUnlocked}
+          progress={levelProgress}
+          cardSize={cardSize}
+          chapterColor={chapter.color}
+          onPress={() => handleLevelPress(item.id)}
+        />
+      );
+    },
+    [chapter, userProgress, cardSize, handleLevelPress],
+  );
+
+  // Memoized separator - avoids inline function recreation
+  const ItemSeparator = useCallback(
+    () => <View style={{ height: gap }} />,
+    [gap],
+  );
+
+  // getItemLayout - eliminates layout measurement overhead for fixed-size grid items
+  const getItemLayout = useCallback(
+    (_: any, index: number) => ({
+      length: cardSize + gap,
+      offset: (cardSize + gap) * Math.floor(index / numColumns),
+      index,
+    }),
+    [cardSize, gap, numColumns],
+  );
+
+  // Show loading only if data is not ready
   if (isLoading && levels.length === 0) {
     return (
       <View style={[styles.container, styles.centered]}>
@@ -144,27 +243,7 @@ export default function LevelsScreen() {
     );
   }
 
-  const numColumns = getResponsiveValue(width, { phone: 4, tablet: 6 });
-  const padding = BOARD_PADDING;
-  const gap = 10;
-  const cardSize = (width - padding * 2 - gap * (numColumns - 1)) / numColumns;
-  const chapterProgress = progressActions.getChapterProgress(chapter.id);
-
-  const renderLevel = ({ item, index }: { item: Level; index: number }) => {
-    const isUnlocked = progressActions.isLevelUnlocked(chapter.id, item.id);
-    const progress = progressActions.getLevelProgress(chapter.id, item.id);
-    return (
-      <LevelCard
-        level={item}
-        index={index}
-        isUnlocked={isUnlocked}
-        progress={progress}
-        cardSize={cardSize}
-        chapterColor={chapter.color}
-        onPress={() => router.push(`/game/jigsaw/${chapterId}/${item.id}`)}
-      />
-    );
-  };
+  // Note: numColumns, padding, gap, cardSize already calculated above (before hooks)
 
   return (
     <View style={[styles.container, { paddingTop: top }]}>
@@ -217,14 +296,26 @@ export default function LevelsScreen() {
         key={numColumns}
         contentContainerStyle={[styles.listContent, { padding }]}
         columnWrapperStyle={{ gap }}
-        ItemSeparatorComponent={() => <View style={{ height: gap }} />}
+        ItemSeparatorComponent={ItemSeparator}
+        getItemLayout={getItemLayout}
         showsVerticalScrollIndicator={false}
         // Performance optimizations
         removeClippedSubviews={true}
-        initialNumToRender={numColumns * 4}
-        maxToRenderPerBatch={numColumns * 2}
-        windowSize={5}
+        initialNumToRender={numColumns * 3}
+        maxToRenderPerBatch={numColumns}
+        windowSize={3}
+        updateCellsBatchingPeriod={50} // Batch UI updates for smoother rendering
       />
+
+      {/* Loading Overlay */}
+      {isNavigating && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" color={COLORS.accent} />
+            <Text style={styles.loadingText}>Yükleniyor...</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -254,20 +345,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 15,
   },
-  chapterBadge: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
-  },
-  chapterBadgeText: {
-    fontSize: 28,
-    fontWeight: "900",
-    color: COLORS.textPrimary,
-  },
   headerTitles: { flex: 1 },
   headerTitle: { fontSize: 24, fontWeight: "800", color: COLORS.textPrimary },
   progressPill: {
@@ -291,8 +368,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
     gap: 6,
-    borderWidth: 1,
-    borderColor: COLORS.border,
   },
   starPillIcon: { color: COLORS.starFilled, fontSize: 18 },
   starPillText: { color: COLORS.textPrimary, fontWeight: "800", fontSize: 16 },
@@ -354,5 +429,25 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 9999,
+  },
+  loadingBox: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 24,
+    alignItems: "center",
+    gap: 12,
+    minWidth: 150,
+  },
+  loadingText: {
+    color: COLORS.textPrimary,
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

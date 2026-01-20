@@ -1,7 +1,8 @@
+import { useSettingsStore } from "@/src/store/settingsStore";
+import { useAudioPlayer } from "expo-audio";
 import * as Haptics from "expo-haptics";
 import { useCallback } from "react";
 import { useJigsawStore } from "./jigsawStore";
-
 export type DropResult = {
   success: boolean;
   merged: boolean;
@@ -17,13 +18,30 @@ export const useJigsawLogic = (pieceWidth: number, pieceHeight: number) => {
   );
   const gridSize = useJigsawStore((state) => state.gridSize);
 
+  // Audio Player
+  const player = useAudioPlayer(require("@/src/assets/sounds/pop.mp3"));
+
   /**
    * Trigger haptic feedback based on scenario
    */
   const triggerHaptic = useCallback(
     (type: "merge" | "reject" | "move" | "drag") => {
-      const isHapticEnabled = useJigsawStore.getState().isHapticEnabled;
-      if (!isHapticEnabled) return;
+      const { hapticsEnabled, soundEnabled, soundVolume } =
+        useSettingsStore.getState();
+
+      // Sound
+      if (
+        soundEnabled &&
+        (type === "move" || type === "merge" || type === "reject")
+      ) {
+        // "her hareket bittiğinde" -> move, merge, reject
+        player.volume = soundVolume;
+        player.seekTo(0);
+        player.play();
+      }
+
+      // Haptics
+      if (!hapticsEnabled) return;
 
       switch (type) {
         case "merge":
@@ -40,7 +58,7 @@ export const useJigsawLogic = (pieceWidth: number, pieceHeight: number) => {
           break;
       }
     },
-    [],
+    [player], // Add player to dependency
   );
 
   /**

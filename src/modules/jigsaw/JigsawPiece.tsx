@@ -30,7 +30,7 @@ interface JigsawPieceProps {
 
 const BORDER_WIDTH = 2;
 const BORDER_COLOR = "#fafafa";
-const GAP = 2;
+const GAP = 0; // Set to 0 for seamless merged pieces (borders provide visual distinction)
 const DAMPING_FACTOR = 1.0;
 
 const JigsawPiece: React.FC<JigsawPieceProps> = ({
@@ -142,14 +142,10 @@ const JigsawPiece: React.FC<JigsawPieceProps> = ({
     const groupDragX = isBeingDragged ? dragTranslation.value.x : 0;
     const groupDragY = isBeingDragged ? dragTranslation.value.y : 0;
 
-    // Dynamic offset: only apply gap offset where there's NO neighbor
-    const leftOffset = hasNeighborLeft ? 0 : GAP / 2;
-    const topOffset = hasNeighborTop ? 0 : GAP / 2;
-
     return {
       transform: [
-        { translateX: targetX + visualOffsetX.value + groupDragX + leftOffset },
-        { translateY: targetY + visualOffsetY.value + groupDragY + topOffset },
+        { translateX: targetX + visualOffsetX.value + groupDragX },
+        { translateY: targetY + visualOffsetY.value + groupDragY },
         { perspective: 1000 },
         { rotateY: `${flipRotation.value}deg` },
       ],
@@ -157,15 +153,9 @@ const JigsawPiece: React.FC<JigsawPieceProps> = ({
     };
   });
 
-  // Dynamic size: reduce by gap only on sides without neighbors
-  const displayWidth =
-    pieceWidth -
-    (hasNeighborLeft ? 0 : GAP / 2) -
-    (hasNeighborRight ? 0 : GAP / 2);
-  const displayHeight =
-    pieceHeight -
-    (hasNeighborTop ? 0 : GAP / 2) -
-    (hasNeighborBottom ? 0 : GAP / 2);
+  // Use full piece dimensions (GAP=0 means no size reduction needed)
+  const displayWidth = pieceWidth;
+  const displayHeight = pieceHeight;
 
   // Animated opacity based on flip rotation (works on Android, unlike backfaceVisibility)
   const backStyle = useAnimatedStyle(() => ({

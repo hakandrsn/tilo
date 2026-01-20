@@ -20,7 +20,6 @@ export interface JigsawState {
   isInitialized: boolean;
   maxZIndex: number;
   status: GameStatus;
-  isHapticEnabled: boolean;
   moves: number;
   levelKey: number; // Increments on each new level to trigger flip animation
 }
@@ -46,7 +45,6 @@ const initialState: JigsawState = {
   isInitialized: false,
   maxZIndex: 1,
   status: "playing",
-  isHapticEnabled: true,
   moves: 0,
   levelKey: 0,
 };

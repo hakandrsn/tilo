@@ -30,7 +30,7 @@ export default function CustomSplashScreen({
   useEffect(() => {
     // 1. Logo Entrance
     logoOpacity.value = withTiming(1, { duration: 800 });
-    logoScale.value = withSpring(1, { damping: 10, stiffness: 100 });
+    logoScale.value = withSpring(1, { damping: 2, stiffness: 1 });
 
     // 2. Text Entrance (Delayed)
     textOpacity.value = withTiming(1, { duration: 800 });

@@ -1,29 +1,30 @@
-import { Image } from "expo-image";
-import { Stack, useRouter } from "expo-router";
-import React from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-  useWindowDimensions,
-} from "react-native";
-import ChapterNativeAd from "../src/components/ChapterNativeAd";
 import {
   BOARD_PADDING,
   COLORS,
   getGridColumns,
-} from "../src/constants/gameConfig";
-import { useAdActions } from "../src/store/adStore";
+} from "@/src/constants/gameConfig";
+import { useAdActions } from "@/src/store/adStore";
 import {
   useChapters,
   useDataActions,
   useIsDataLoading,
-} from "../src/store/dataStore";
-import { useProgressActions, useTotalStars } from "../src/store/progressStore";
-import { Chapter } from "../src/types";
+} from "@/src/store/dataStore";
+import { useProgressActions, useTotalStars } from "@/src/store/progressStore";
+import { Chapter } from "@/src/types";
+import { Image } from "expo-image";
+import { Stack, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  InteractionManager,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import ChapterNativeAd from "../src/components/ChapterNativeAd";
 
 interface ChapterCardProps {
   chapter: Chapter;
@@ -110,6 +111,15 @@ export default function ChaptersScreen() {
   const { getChapters } = useDataActions();
   const isLoading = useIsDataLoading();
   const adActions = useAdActions();
+  // Performance: Defer heavy render until navigation animation completes
+  const [canRender, setCanRender] = useState(false);
+
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
+      setCanRender(true);
+    });
+    return () => task.cancel();
+  }, []);
 
   React.useEffect(() => {
     getChapters();
@@ -151,10 +161,55 @@ export default function ChaptersScreen() {
     return rows;
   }, [chapters, numColumns, adActions]);
 
-  if (isLoading && chapters.length === 0) {
+  // Memoized renderItem - prevents re-creating function on each render
+  const renderItem = useCallback(
+    ({ item }: { item: (typeof listData)[0] }) => {
+      if (item.type === "ad") {
+        return <ChapterNativeAd index={parseInt(item.id.split("-")[1])} />;
+      }
+
+      // Render row of chapters
+      return (
+        <View style={[styles.chapterRow, { gap }]}>
+          {item.items?.map((chapter) => (
+            <ChapterCard
+              key={chapter.id}
+              chapter={chapter}
+              index={chapters.indexOf(chapter)}
+             isUnlocked={progressActions.isChapterUnlocked(chapter.id)}
+              progress={progressActions.getChapterProgress(chapter.id)}
+              cardWidth={cardWidth}
+              onPress={() => router.push(`/levels/${chapter.id}`)}
+            />
+          ))}
+        </View>
+      );
+    },
+    [cardWidth, gap, chapters, progressActions, router],
+  );
+
+  // Memoized separator - avoids inline function recreation
+  const ItemSeparator = useCallback(
+    () => <View style={{ height: gap }} />,
+    [gap],
+  );
+
+  // getItemLayout - eliminates layout measurement overhead for fixed-size rows
+  const ROW_HEIGHT = cardWidth * 1.5 + 100; // card aspect ratio + info area padding
+  const getItemLayout = useCallback(
+    (_: any, index: number) => ({
+      length: ROW_HEIGHT,
+      offset: ROW_HEIGHT * index,
+      index,
+    }),
+    [ROW_HEIGHT],
+  );
+
+  // Show loading until navigation animation completes AND data is ready
+  if (!canRender || (isLoading && chapters.length === 0)) {
     return (
       <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color={COLORS.accent} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
       </View>
     );
   }
@@ -178,37 +233,17 @@ export default function ChaptersScreen() {
 
       <FlatList
         data={listData}
-        renderItem={({ item }) => {
-          if (item.type === "ad") {
-            return <ChapterNativeAd index={parseInt(item.id.split("-")[1])} />;
-          }
-
-          // Render row of chapters
-          return (
-            <View style={[styles.chapterRow, { gap }]}>
-              {item.items?.map((chapter, idx) => (
-                <ChapterCard
-                  key={chapter.id}
-                  chapter={chapter}
-                  index={chapters.indexOf(chapter)}
-                  isUnlocked={progressActions.isChapterUnlocked(chapter.id)}
-                  progress={progressActions.getChapterProgress(chapter.id)}
-                  cardWidth={cardWidth}
-                  onPress={() => router.push(`/levels/${chapter.id}`)}
-                />
-              ))}
-            </View>
-          );
-        }}
+        renderItem={renderItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.listContent, { padding }]}
-        ItemSeparatorComponent={() => <View style={{ height: gap }} />}
+        ItemSeparatorComponent={ItemSeparator}
+        getItemLayout={getItemLayout}
         showsVerticalScrollIndicator={false}
         // Performance optimizations
-        removeClippedSubviews={true} // High impact on Android
-        initialNumToRender={4} // Render just enough to fill screen
+        removeClippedSubviews={true}
+        initialNumToRender={8}
         maxToRenderPerBatch={4}
-        windowSize={5} // Keep memory usage low
+        windowSize={10}
       />
     </View>
   );

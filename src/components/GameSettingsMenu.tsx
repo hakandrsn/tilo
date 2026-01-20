@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons"; // Need to check if Feather/MaterialIcons fit better or stick to Ionicons
+import Slider from "@react-native-community/slider";
 import React from "react";
 import {
   Modal,
@@ -24,8 +25,16 @@ const GameSettingsMenu: React.FC<GameSettingsMenuProps> = ({
   const {
     hapticsEnabled,
     musicEnabled,
+    musicVolume,
     soundEnabled,
-    actions: { toggleHaptics, toggleMusic, toggleSound },
+    soundVolume,
+    actions: {
+      toggleHaptics,
+      toggleMusic,
+      setMusicVolume,
+      toggleSound,
+      setSoundVolume,
+    },
   } = useSettingsStore();
 
   return (
@@ -50,58 +59,114 @@ const GameSettingsMenu: React.FC<GameSettingsMenuProps> = ({
                 </TouchableOpacity>
               </View>
 
-              {/* Haptics Toggle */}
-              <View style={styles.row}>
-                <View style={styles.labelContainer}>
-                  <Ionicons
-                    name="phone-portrait-outline"
-                    size={22}
-                    color={COLORS.textPrimary}
+              {/* Haptics */}
+              <View style={styles.settingBlock}>
+                <View style={styles.row}>
+                  <View style={styles.labelContainer}>
+                    <Ionicons
+                      name="phone-portrait-outline"
+                      size={22}
+                      color={COLORS.textPrimary}
+                    />
+                    <Text style={styles.label}>Titreşim</Text>
+                  </View>
+                  <Switch
+                    value={hapticsEnabled}
+                    onValueChange={toggleHaptics}
+                    trackColor={{ false: "#e0e0e0", true: COLORS.primary }}
+                    thumbColor={"#fff"}
                   />
-                  <Text style={styles.label}>Titreşim</Text>
                 </View>
-                <Switch
-                  value={hapticsEnabled}
-                  onValueChange={toggleHaptics}
-                  trackColor={{ false: "#e0e0e0", true: COLORS.primary }} // Use primary (sunflower) for on
-                  thumbColor={"#fff"}
-                />
               </View>
 
-              {/* Music Toggle */}
-              <View style={styles.row}>
-                <View style={styles.labelContainer}>
-                  <Ionicons
-                    name="musical-notes-outline"
-                    size={22}
-                    color={COLORS.textPrimary}
+              {/* Music */}
+              <View style={styles.settingBlock}>
+                <View style={styles.row}>
+                  <View style={styles.labelContainer}>
+                    <Ionicons
+                      name="musical-notes-outline"
+                      size={22}
+                      color={COLORS.textPrimary}
+                    />
+                    <Text style={styles.label}>Müzik</Text>
+                  </View>
+                  <Switch
+                    value={musicEnabled}
+                    onValueChange={toggleMusic}
+                    trackColor={{ false: "#e0e0e0", true: COLORS.primary }}
+                    thumbColor={"#fff"}
                   />
-                  <Text style={styles.label}>Müzik</Text>
                 </View>
-                <Switch
-                  value={musicEnabled}
-                  onValueChange={toggleMusic}
-                  trackColor={{ false: "#e0e0e0", true: COLORS.primary }}
-                  thumbColor={"#fff"}
-                />
+
+                {musicEnabled && (
+                  <View style={styles.sliderRow}>
+                    <Ionicons
+                      name="volume-low-outline"
+                      size={20}
+                      color={COLORS.textSecondary}
+                    />
+                    <Slider
+                      style={{ flex: 1, height: 40 }}
+                      minimumValue={0}
+                      maximumValue={1}
+                      value={musicVolume}
+                      onValueChange={setMusicVolume}
+                      minimumTrackTintColor={COLORS.primary}
+                      maximumTrackTintColor={COLORS.border}
+                      thumbTintColor={COLORS.primary}
+                    />
+                    <Ionicons
+                      name="volume-high-outline"
+                      size={20}
+                      color={COLORS.textSecondary}
+                    />
+                  </View>
+                )}
               </View>
 
-              {/* Sound Toggle */}
-              <View style={styles.row}>
-                <View style={styles.labelContainer}>
-                  <Ionicons
-                    name="volume-high-outline"
-                    size={22}
-                    color={COLORS.textPrimary}
+              {/* Sound Effects */}
+              <View style={styles.settingBlock}>
+                <View style={styles.row}>
+                  <View style={styles.labelContainer}>
+                    <Ionicons
+                      name="volume-high-outline"
+                      size={22}
+                      color={COLORS.textPrimary}
+                    />
+                    <Text style={styles.label}>Ses Efektleri</Text>
+                  </View>
+                  <Switch
+                    value={soundEnabled}
+                    onValueChange={toggleSound}
+                    trackColor={{ false: "#e0e0e0", true: COLORS.primary }}
+                    thumbColor={"#fff"}
                   />
-                  <Text style={styles.label}>Ses Efektleri</Text>
                 </View>
-                <Switch
-                  value={soundEnabled}
-                  onValueChange={toggleSound}
-                  trackColor={{ false: "#e0e0e0", true: COLORS.primary }}
-                  thumbColor={"#fff"}
-                />
+
+                {soundEnabled && (
+                  <View style={styles.sliderRow}>
+                    <Ionicons
+                      name="volume-low-outline"
+                      size={20}
+                      color={COLORS.textSecondary}
+                    />
+                    <Slider
+                      style={{ flex: 1, height: 40 }}
+                      minimumValue={0}
+                      maximumValue={1}
+                      value={soundVolume}
+                      onValueChange={setSoundVolume}
+                      minimumTrackTintColor={COLORS.primary}
+                      maximumTrackTintColor={COLORS.border}
+                      thumbTintColor={COLORS.primary}
+                    />
+                    <Ionicons
+                      name="volume-high-outline"
+                      size={20}
+                      color={COLORS.textSecondary}
+                    />
+                  </View>
+                )}
               </View>
             </View>
           </TouchableWithoutFeedback>
@@ -115,12 +180,6 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: "transparent", // Overlayless as requested
-    // User said "overlaysiz bir modal açılacak". If I interpret strictly, maybe just a dropdown?
-    // But then click-outside-to-close is harder without full view.
-    // I'll make the background transparent-ish or very subtle.
-    // "overlaysiz" usually implies "don't dim the whole screen".
-    // I will use transparent overlay to catch clicks but show game behind clearly.
-    // Just alignment: center or top-right? User didn't specify position, just "modal".
     justifyContent: "center",
     alignItems: "center",
   },
@@ -151,11 +210,14 @@ const styles = StyleSheet.create({
   closeBtn: {
     padding: 4,
   },
+  settingBlock: {
+    marginBottom: 16,
+  },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 4,
   },
   labelContainer: {
     flexDirection: "row",
@@ -166,6 +228,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.textPrimary,
     fontWeight: "500",
+  },
+  sliderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+    paddingLeft: 34,
   },
 });
 

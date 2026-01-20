@@ -1,3 +1,9 @@
+import { COLORS } from "@/src/constants/colors";
+import { initializeAds } from "@/src/services/adManager";
+import { loginWithDevice } from "@/src/services/authService";
+import { getDeviceId } from "@/src/services/deviceService";
+import { useAdActions } from "@/src/store/adStore";
+import { useProgressActions } from "@/src/store/progressStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import { QueryClient } from "@tanstack/react-query";
@@ -10,12 +16,6 @@ import { StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import CustomSplashScreen from "../src/components/CustomSplashScreen";
 import DevPanel from "../src/components/DevPanel";
-import { COLORS } from "../src/constants/gameConfig";
-import { initializeAds } from "../src/services/adManager";
-import { loginWithDevice } from "../src/services/authService";
-import { getDeviceId } from "../src/services/deviceService";
-import { useAdActions } from "../src/store/adStore";
-import { useProgressActions } from "../src/store/progressStore";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,8 +35,6 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [appIsReady, setAppIsReady] = useState(false);
-  const [isSplashAnimationFinished, setIsSplashAnimationFinished] =
-    useState(false);
 
   const progressActions = useProgressActions();
   const adActions = useAdActions();
@@ -101,18 +99,58 @@ export default function RootLayout() {
 
           {/* Main App Content - Rendered but covered by Splash until ready */}
           {appIsReady && (
-            <Stack
-              screenOptions={{
-                headerStyle: { backgroundColor: COLORS.surface },
-                headerTintColor: COLORS.textPrimary,
-                headerTitleStyle: {
-                  fontWeight: "600",
-                  color: COLORS.textPrimary,
-                },
-                contentStyle: { backgroundColor: COLORS.background },
-                headerShadowVisible: false,
-              }}
-            />
+            <Stack>
+              <Stack.Screen name="index" options={{ headerShown: false }} />
+              <Stack.Screen
+                name="chapters"
+                options={{
+                  title: "Bölümler",
+                  headerStyle: { backgroundColor: COLORS.background },
+                  headerTintColor: COLORS.textPrimary,
+                  headerTitleStyle: {
+                    fontWeight: "600",
+                    color: COLORS.textPrimary,
+                  },
+                  contentStyle: { backgroundColor: COLORS.background },
+                  headerShadowVisible: false,
+                  // Prevent header flash - use fade instead of default slide
+                  animation: "slide_from_right", // <--- DAHA SMOOTH GEÇİŞ, HEADER FLASH AZALIR
+                  headerShown: true, // Default olarak göster, sayfalar override edecek
+                }}
+              />
+              <Stack.Screen
+                name="levels/[chapterId]"
+                options={{
+                  title: "Seviyeler",
+                  animation: "slide_from_right",
+                  headerShown: false,
+                  // Keep screen in memory when navigating away - prevents re-renders on return
+                  freezeOnBlur: true,
+                }}
+              />
+              <Stack.Screen
+                name="game/jigsaw/[chapterId]/[levelId]"
+                options={{
+                  headerShown: false,
+                  animation: "slide_from_right", // <--- DAHA SMOOTH GEÇİŞ, HEADER FLASH AZALIR
+                }}
+              />
+            </Stack>
+            // <Stack
+            //   screenOptions={{
+            //     headerStyle: { backgroundColor: COLORS.background },
+            //     headerTintColor: COLORS.textPrimary,
+            //     headerTitleStyle: {
+            //       fontWeight: "600",
+            //       color: COLORS.textPrimary,
+            //     },
+            //     contentStyle: { backgroundColor: COLORS.background },
+            //     headerShadowVisible: false,
+            //     // Prevent header flash - use fade instead of default slide
+            //     animation: "fade", // <--- DAHA SMOOTH GEÇİŞ, HEADER FLASH AZALIR
+            //     headerShown: true, // Default olarak göster, sayfalar override edecek
+            //   }}
+            // />
           )}
 
           {/* Custom Splash Screen - Exits with animation when appIsReady */}
@@ -133,7 +171,7 @@ export default function RootLayout() {
           */}
         </View>
 
-        {__DEV__ && <DevPanel />}
+
       </PersistQueryClientProvider>
     </SafeAreaProvider>
   );

@@ -1,0 +1,1 @@
+export const log = (log:any) => __DEV__ && console.log(log)
