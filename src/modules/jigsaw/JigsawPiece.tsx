@@ -30,7 +30,6 @@ interface JigsawPieceProps {
 
 const BORDER_WIDTH = 2;
 const BORDER_COLOR = "#fafafa";
-const GAP = 0; // Set to 0 for seamless merged pieces (borders provide visual distinction)
 const DAMPING_FACTOR = 1.0;
 
 const JigsawPiece: React.FC<JigsawPieceProps> = ({
@@ -199,6 +198,7 @@ const JigsawPiece: React.FC<JigsawPieceProps> = ({
             source={require("../../assets/images/card-bg.jpeg")}
             style={{ width: "100%", height: "100%" }}
             contentFit="cover"
+            cachePolicy="memory-disk"
           />
         </Animated.View>
 
@@ -221,6 +221,7 @@ const JigsawPiece: React.FC<JigsawPieceProps> = ({
               transform: [{ translateX: left }, { translateY: top }],
             }}
             contentFit="cover"
+            cachePolicy="memory-disk"
           />
         </Animated.View>
       </Animated.View>

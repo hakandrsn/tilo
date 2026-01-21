@@ -77,6 +77,7 @@ export default function CustomSplashScreen({
             source={require("../assets/images/splash-icon.png")}
             style={styles.logo}
             contentFit="contain"
+            cachePolicy="memory-disk"
           />
         </Animated.View>
 

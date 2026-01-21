@@ -261,6 +261,7 @@ const JigsawGroup: React.FC<JigsawGroupProps> = ({
                   height: gridSize.rows * pieceSize,
                   transform: [{ translateX: left }, { translateY: top }],
                 }}
+                cachePolicy="memory-disk"
               />
 
               {/* Highlight Locked Pieces (Magnet) */}

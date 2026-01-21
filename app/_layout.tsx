@@ -15,7 +15,6 @@ import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import CustomSplashScreen from "../src/components/CustomSplashScreen";
-import DevPanel from "../src/components/DevPanel";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,7 +45,6 @@ export default function RootLayout() {
         await SplashScreen.hideAsync();
 
         const deviceId = await getDeviceId();
-        console.log("🚀 App starting with device:", deviceId);
 
         // Login & Load Data
         await loginWithDevice();
@@ -113,9 +111,8 @@ export default function RootLayout() {
                   },
                   contentStyle: { backgroundColor: COLORS.background },
                   headerShadowVisible: false,
-                  // Prevent header flash - use fade instead of default slide
-                  animation: "slide_from_right", // <--- DAHA SMOOTH GEÇİŞ, HEADER FLASH AZALIR
-                  headerShown: true, // Default olarak göster, sayfalar override edecek
+                  animation: "slide_from_right",
+                  headerShown: true,
                 }}
               />
               <Stack.Screen
@@ -124,7 +121,6 @@ export default function RootLayout() {
                   title: "Seviyeler",
                   animation: "slide_from_right",
                   headerShown: false,
-                  // Keep screen in memory when navigating away - prevents re-renders on return
                   freezeOnBlur: true,
                 }}
               />
@@ -132,46 +128,13 @@ export default function RootLayout() {
                 name="game/jigsaw/[chapterId]/[levelId]"
                 options={{
                   headerShown: false,
-                  animation: "slide_from_right", // <--- DAHA SMOOTH GEÇİŞ, HEADER FLASH AZALIR
+                  animation: "slide_from_right",
                 }}
               />
             </Stack>
-            // <Stack
-            //   screenOptions={{
-            //     headerStyle: { backgroundColor: COLORS.background },
-            //     headerTintColor: COLORS.textPrimary,
-            //     headerTitleStyle: {
-            //       fontWeight: "600",
-            //       color: COLORS.textPrimary,
-            //     },
-            //     contentStyle: { backgroundColor: COLORS.background },
-            //     headerShadowVisible: false,
-            //     // Prevent header flash - use fade instead of default slide
-            //     animation: "fade", // <--- DAHA SMOOTH GEÇİŞ, HEADER FLASH AZALIR
-            //     headerShown: true, // Default olarak göster, sayfalar override edecek
-            //   }}
-            // />
           )}
-
-          {/* Custom Splash Screen - Exits with animation when appIsReady */}
           {!appIsReady && <CustomSplashScreen />}
-
-          {/* 
-             NOTE: To allow Reanimated 'exiting' animation to be visible,
-             CustomSplashScreen must be unmounted.
-             However, if we want the Stack to be visible *underneath* while it fades out,
-             we need a specific structure.
-             
-             Actually, simplest way for 'Cover' splash:
-             1. Show Splash.
-             2. appIsReady = true -> Splash unmounts.
-             3. CustomSplashScreen has `exiting={FadeOut}` prop.
-             4. Reanimated will keep the Splash visible (absolute positioned) while fading it out.
-             5. The Stack (which just rendered) will be visible underneath!
-          */}
         </View>
-
-
       </PersistQueryClientProvider>
     </SafeAreaProvider>
   );

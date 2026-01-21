@@ -86,6 +86,7 @@ const Tile: React.FC<TileProps> = ({
           ]}
           contentFit="cover"
           transition={0}
+          cachePolicy="memory-disk"
         />
       </View>
       <View

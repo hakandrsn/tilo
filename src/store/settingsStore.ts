@@ -22,7 +22,7 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       hapticsEnabled: true,
-      musicEnabled: false, // Default off as per request "şuan yok ama bir müzik koyacağız" music close
+      musicEnabled: true, // Default true as requested
       musicVolume: 0.3,
       soundEnabled: true,
       soundVolume: 0.3,

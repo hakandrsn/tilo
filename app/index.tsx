@@ -1,3 +1,4 @@
+import GameSettings from "@/src/components/GameSettings";
 import {
   BOARD_PADDING,
   COLORS,
@@ -7,13 +8,13 @@ import { useClickSound } from "@/src/hooks/useClickSound";
 import { useAdActions } from "@/src/store/adStore";
 import { useChapters, useDataActions } from "@/src/store/dataStore";
 import {
-  useLastPlayed,
   useProgressActions,
   useProgressStore,
   useTotalCoins,
   useTotalStars,
 } from "@/src/store/progressStore";
 import { Image } from "expo-image";
+
 import { Stack, useRouter } from "expo-router";
 import { requestTrackingPermissionsAsync } from "expo-tracking-transparency";
 import React, { useEffect, useState } from "react";
@@ -39,10 +40,8 @@ export default function StartScreen() {
   // Stores
   const totalStars = useTotalStars();
   const totalCoins = useTotalCoins();
-  const lastPlayed = useLastPlayed();
   const chapters = useChapters();
 
-  // Check if user has any progress (completed levels)
   const hasProgress = useProgressStore(
     (state) => Object.keys(state.progress.completedLevels).length > 0,
   );
@@ -147,11 +146,12 @@ export default function StartScreen() {
       <Stack.Screen
         options={{
           headerShown: false,
-          title: "",
-          headerStyle: { backgroundColor: COLORS.background },
-          headerShadowVisible: false,
         }}
       />
+
+      <View style={styles.settingsOverlay}>
+        <GameSettings />
+      </View>
 
       <View style={styles.content}>
         {/* TEXT (ilo) */}
@@ -174,6 +174,7 @@ export default function StartScreen() {
               source={require("../src/assets/images/splash-icon.png")}
               style={styles.logoIcon}
               contentFit="contain"
+              cachePolicy="memory-disk"
             />
           </Animated.View>
         </View>
@@ -350,5 +351,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
+  },
+  settingsOverlay: {
+    position: "absolute",
+    top: 50,
+    right: 20,
+    zIndex: 1000,
   },
 });

@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { db } from "../../firebaseConfig";
+import { db } from "@/firebaseConfig";
 import { COLORS, getGridSizeForLevel } from "../constants/gameConfig";
 import {
   updateAllChaptersGridSize,
@@ -35,51 +35,58 @@ const uploadLevelsToFirebase = async (targetChapterId: string) => {
       `⏳ Level yüklemesi başlıyor... Chapter: ${targetChapterId}, Folder: ${FOLDER_NAME}`,
     );
 
-    const promises = Array.from({ length: 24 }, (_, i) => i + 1).map(
-      async (levelId) => {
-        // 1. Storage path: "chapter-1-levels/level-1.jpg"
-        const fileName = `level-${levelId}${FILE_EXTENSION}`;
-        const storageRef = ref(storage, `${FOLDER_NAME}/${fileName}`);
+    let levelId = 1;
+    let uploadedCount = 0;
 
-        let downloadUrl = "";
-        try {
-          downloadUrl = await getDownloadURL(storageRef);
-          console.log(`✅ Level ${levelId} resmi bulundu`);
-        } catch (err) {
-          console.error(`❌ Level ${levelId} resmi YOK: ${fileName}`);
-          downloadUrl = "https://via.placeholder.com/500";
-        }
+    // Sıralı istek at, bulamazsan dur
+    while (true) {
+      const fileName = `level-${levelId}${FILE_EXTENSION}`;
+      const storageRef = ref(storage, `${FOLDER_NAME}/${fileName}`);
 
-        // 2. Prepare Data
-        const gridSize = getGridSizeForLevel(levelId);
-        const levelData = {
-          id: levelId,
-          chapterId: Number(targetChapterId),
-          gridSize: gridSize,
-          imageSource: { uri: downloadUrl },
-          moves: 0, // Reset logic or default
-          stars: 0,
-        };
-
-        // 3. Firestore Ref: chapters/{id}/levels/{levelId}
-        const levelDocRef = doc(
-          db,
-          "chapters",
-          targetChapterId,
-          "levels",
-          levelId.toString(),
+      let downloadUrl = "";
+      try {
+        downloadUrl = await getDownloadURL(storageRef);
+        console.log(`✅ Level ${levelId} resmi bulundu`);
+      } catch (err) {
+        // Resim bulunamadı, döngüyü kır
+        console.log(
+          `🛑 Level ${levelId} bulunamadı, yükleme durduruluyor. Toplam: ${uploadedCount} level`,
         );
-        batch.set(levelDocRef, levelData, { merge: true });
-      },
-    );
+        break;
+      }
 
-    // Wait for all
-    await Promise.all(promises);
+      // Prepare Data - gridSize kuralına göre
+      const gridSize = getGridSizeForLevel(levelId);
+      const levelData = {
+        id: levelId,
+        chapterId: Number(targetChapterId),
+        gridSize: gridSize,
+        imageSource: { uri: downloadUrl },
+      };
 
-    // Commit batch
-    await batch.commit();
+      // Firestore Ref: chapters/{id}/levels/{levelId}
+      const levelDocRef = doc(
+        db,
+        "chapters",
+        targetChapterId,
+        "levels",
+        levelId.toString(),
+      );
+      batch.set(levelDocRef, levelData, { merge: true });
 
-    alert(`Chapter ${targetChapterId} için 24 level yüklendi! 🚀`);
+      uploadedCount++;
+      levelId++;
+    }
+
+    if (uploadedCount > 0) {
+      // Commit batch
+      await batch.commit();
+      alert(
+        `Chapter ${targetChapterId} için ${uploadedCount} level yüklendi! 🚀`,
+      );
+    } else {
+      alert(`Chapter ${targetChapterId} için hiç level bulunamadı.`);
+    }
   } catch (error) {
     console.error("Level Upload Hatası:", error);
     alert("Hata oluştu, konsola bak.");
@@ -93,7 +100,6 @@ const DevPanel: React.FC = () => {
   const router = useRouter();
   const gameStore = useGameStore();
   const hintActions = useHintActions();
-  const progressActions = useProgressActions();
 
   const goToLevel = () => {
     const cId = parseInt(chapterId) || 1;

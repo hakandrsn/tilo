@@ -1,45 +1,29 @@
-import { Ionicons } from "@expo/vector-icons";
-import { DotLottie } from "@lottiefiles/dotlottie-react-native";
-import { Image } from "expo-image";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Modal,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  useWindowDimensions,
-  View,
-} from "react-native";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {Ionicons} from "@expo/vector-icons";
+import {DotLottie} from "@lottiefiles/dotlottie-react-native";
+import {Image} from "expo-image";
+import {Stack, useLocalSearchParams, useRouter} from "expo-router";
+import React, {useEffect, useState} from "react";
+import {ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View,} from "react-native";
+import {GestureHandlerRootView} from "react-native-gesture-handler";
+import Animated, {useAnimatedStyle, useSharedValue, withTiming,} from "react-native-reanimated";
+import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 // Stores & Hooks
-import {
-  calculateStars,
-  COLORS,
-  LEVELS_PER_CHAPTER,
-  TOTAL_CHAPTERS,
-} from "@/src/constants/gameConfig";
-import { useJigsawStore } from "@/src/modules/jigsaw/jigsawStore";
-import { useAdStore } from "@/src/store/adStore";
-import { useDataActions } from "@/src/store/dataStore";
+import {calculateStars, COLORS, LEVELS_PER_CHAPTER, TOTAL_CHAPTERS,} from "@/src/constants/gameConfig";
+import {useJigsawStore} from "@/src/modules/jigsaw/jigsawStore";
+import {useAdStore} from "@/src/store/adStore";
+import {useDataActions} from "@/src/store/dataStore";
 
 // Components
 import BackgroundMusic from "@/src/components/BackgroundMusic";
 import GameBannerAd from "@/src/components/GameBannerAd";
-import GameSettingsMenu from "@/src/components/GameSettingsMenu";
-import { useClickSound } from "@/src/hooks/useClickSound";
+import GameSettings from "@/src/components/GameSettings";
+
+import {useClickSound} from "@/src/hooks/useClickSound";
 import JigsawBoard from "@/src/modules/jigsaw/JigsawBoard";
-import { showInterstitial } from "@/src/services/adManager";
-import { useProgressActions } from "@/src/store/progressStore";
-import { Level } from "@/src/types";
+import {showInterstitial} from "@/src/services/adManager";
+import {useProgressActions} from "@/src/store/progressStore";
+import {Level} from "@/src/types";
 
 export default function JigsawGameScreen() {
   const router = useRouter();
@@ -65,7 +49,6 @@ export default function JigsawGameScreen() {
   const resetGame = useJigsawStore((state) => state.actions.resetGame);
   const status = useJigsawStore((state) => state.status);
   const moves = useJigsawStore((state) => state.moves);
-  const isInitialized = useJigsawStore((state) => state.isInitialized);
   const initializeLevel = useJigsawStore(
     (state) => state.actions.initializeLevel,
   );
@@ -75,7 +58,6 @@ export default function JigsawGameScreen() {
   const [prevLevel, setPrevLevel] = useState<Level | undefined>(); // For visual transition
   const [isLoading, setIsLoading] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [showContinue, setShowContinue] = useState(false);
 
   // Vertical Scroll Transition
@@ -104,6 +86,11 @@ export default function JigsawGameScreen() {
 
   const loadLevel = async (chapId: number, lvlId: number) => {
     setIsLoading(true);
+
+    // Board animasyon değerlerini sıfırla - önceki level'dan kalma değerleri temizle
+    boardScale.value = 1;
+    boardTranslateY.value = 0;
+
     const l = await getLevelById(chapId, lvlId);
     if (l) {
       // Initialize game logic BEFORE hiding loader
@@ -124,8 +111,7 @@ export default function JigsawGameScreen() {
       const prefetchNextLevel = async () => {
         try {
           const cLvl = currentLevelId;
-          const cChap = currentChapter;
-          let nextChapter = cChap;
+          let nextChapter = currentChapter;
           let nextLevel = cLvl + 1;
 
           if (nextLevel > LEVELS_PER_CHAPTER) {
@@ -227,11 +213,20 @@ export default function JigsawGameScreen() {
     const nextLevelPromise = getLevelById(nextChapter, nextLevelId);
 
     // Reklamı başlat (Bu sırada nextLevelPromise arkada resolve oluyor)
-    // Chapter 1'de ilk 4 level reklamsız, 5+ levellerde reklam göster
-    // Diğer chapterlarda her zaman reklam göster
-    const shouldShowAd = currentChapter !== 1 || currentLevelId >= 4;
-    if (shouldShowAd) {
-      await showInterstitial();
+    // İki aşamalı reklam mantığı:
+    // 1. Chapter 1, Level 1-4: Reklam yok (yeni kullanıcı deneyimi)
+    // 2. Chapter 1, Level 5+: İlk reklam gösterilir, 5 dakika timer başlar
+    // 3. Sonraki reklamlar: 5 dakika geçtiyse göster
+    const isEligibleForAds = currentChapter !== 1 || currentLevelId >= 4;
+
+    if (isEligibleForAds) {
+      // 5 dakika kontrolü yap - ilk kez çağrıldığında lastInterstitialShown=0 olduğu için hep true döner
+      const canShow = useAdStore
+        .getState()
+        .actions.canShowInterstitial(currentChapter, currentLevelId);
+      if (canShow) {
+        await showInterstitial();
+      }
     }
 
     // Reklam bitti. Verimiz %99 ihtimalle hazır.
@@ -278,13 +273,6 @@ export default function JigsawGameScreen() {
     }, 50); // 50ms gecikme insan gözüne batmaz ama JS thread'i kurtarır.
   };
 
-  const cleanUpTransition = () => {
-    // Reset Scroll to 0 (Now "Next" becomes "Current" visually)
-    scrollTranslateY.value = 0;
-    // Remove "Prev" view
-    setPrevLevel(undefined);
-  };
-
   const handleReplay = () => {
     headerTranslateY.value = 0;
     boardScale.value = 1;
@@ -321,12 +309,17 @@ export default function JigsawGameScreen() {
   const star3Style = useAnimatedStyle(() => ({
     transform: [{ scale: star3Scale.value }],
   }));
-  const boardAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { scale: boardScale.value },
-      { translateY: boardTranslateY.value },
-    ],
-  }));
+  // Board animation sadece won durumunda tetiklenmeli, playing'de sabit kalmalı
+  const boardAnimatedStyle = useAnimatedStyle(() => {
+    // Scale ve translateY değerlerini uygula
+    // Bu değerler sadece win animasyonunda değişiyor
+    return {
+      transform: [
+        { scale: boardScale.value },
+        { translateY: boardTranslateY.value },
+      ],
+    };
+  });
   const continueButtonStyle = useAnimatedStyle(() => ({
     transform: [{ scale: continueButtonScale.value }],
   }));
@@ -393,6 +386,7 @@ export default function JigsawGameScreen() {
                 source={prevLevel.imageSource}
                 style={{ width: width - 40, height: boardHeight }}
                 contentFit="contain"
+                cachePolicy="memory-disk"
               />
             </View>
           </View>
@@ -453,19 +447,11 @@ export default function JigsawGameScreen() {
                     source={level.imageSource}
                     style={styles.thumbnail}
                     contentFit="cover"
+                    cachePolicy="memory-disk"
                   />
                 )}
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setShowSettings(true)}
-                style={styles.headerBtn}
-              >
-                <Ionicons
-                  name="settings-sharp"
-                  size={24}
-                  color={COLORS.textPrimary}
-                />
-              </TouchableOpacity>
+              <GameSettings />
             </View>
           </Animated.View>
 
@@ -599,17 +585,13 @@ export default function JigsawGameScreen() {
                 source={level.imageSource}
                 style={{ width: width * 0.9, height: height * 0.6 }}
                 contentFit="contain"
+                cachePolicy="memory-disk"
               />
             )}
             <Text style={styles.previewText}>Tap to Close</Text>
           </View>
         </TouchableOpacity>
       </Modal>
-
-      <GameSettingsMenu
-        visible={showSettings}
-        onClose={() => setShowSettings(false)}
-      />
 
       <View style={styles.bottomBanner}>
         <GameBannerAd />
@@ -705,7 +687,7 @@ const styles = StyleSheet.create({
   },
   continueContainer: {
     position: "absolute",
-    bottom: 80,
+    bottom: 40,
     left: 0,
     right: 0,
     alignItems: "center",

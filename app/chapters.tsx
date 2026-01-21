@@ -296,8 +296,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1.5,
-    borderColor: COLORS.border,
   },
   idBadgeTxt: { color: COLORS.textPrimary, fontWeight: "900", fontSize: 13 },
   lockedArea: {
