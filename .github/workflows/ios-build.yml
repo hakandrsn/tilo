@@ -1,0 +1,44 @@
+name: iOS Build
+on:
+  workflow_dispatch: # Bu build'i manuel tetiklemeni sağlar
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: 🏗 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🏗 Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.21.1
+          cache: 'npm'
+
+      - name: 🏗 Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: 📦 Install dependencies
+        run: npm install
+
+      - name: 🏗 Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: 🚀 Build iOS
+        run: |
+          eas build --platform ios --profile production --local --non-interactive
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+
+      - name: 📤 Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build
+          path: |
+            *.ipa
+            *.tar.gz
+            
