@@ -1,4 +1,4 @@
-import { DotLottie } from "@lottiefiles/dotlottie-react-native";
+import LottieView from "lottie-react-native";
 import React, { useEffect } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
@@ -27,9 +27,9 @@ interface WinModalProps {
 
 const Star: React.FC<{ delay: number }> = ({ delay }) => (
   <Animated.View entering={ZoomIn.delay(delay).springify()}>
-    <DotLottie
-      source={require("../assets/animations/star.lottie")}
-      autoplay
+    <LottieView
+      source={require("../assets/animations/star.json")}
+      autoPlay
       loop
       style={{ width: 90, height: 90 }}
     />

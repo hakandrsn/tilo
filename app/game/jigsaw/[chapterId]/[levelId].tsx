@@ -1,29 +1,46 @@
-import {Ionicons} from "@expo/vector-icons";
-import {DotLottie} from "@lottiefiles/dotlottie-react-native";
-import {Image} from "expo-image";
-import {Stack, useLocalSearchParams, useRouter} from "expo-router";
-import React, {useEffect, useState} from "react";
-import {ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View,} from "react-native";
-import {GestureHandlerRootView} from "react-native-gesture-handler";
-import Animated, {useAnimatedStyle, useSharedValue, withTiming,} from "react-native-reanimated";
-import {useSafeAreaInsets} from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import LottieView from "lottie-react-native";
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Modal,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Stores & Hooks
-import {calculateStars, COLORS, LEVELS_PER_CHAPTER, TOTAL_CHAPTERS,} from "@/src/constants/gameConfig";
-import {useJigsawStore} from "@/src/modules/jigsaw/jigsawStore";
-import {useAdStore} from "@/src/store/adStore";
-import {useDataActions} from "@/src/store/dataStore";
+import {
+  calculateStars,
+  COLORS,
+  LEVELS_PER_CHAPTER,
+  TOTAL_CHAPTERS,
+} from "@/src/constants/gameConfig";
+import { useJigsawStore } from "@/src/modules/jigsaw/jigsawStore";
+import { useAdStore } from "@/src/store/adStore";
+import { useDataActions } from "@/src/store/dataStore";
 
 // Components
 import BackgroundMusic from "@/src/components/BackgroundMusic";
 import GameBannerAd from "@/src/components/GameBannerAd";
 import GameSettings from "@/src/components/GameSettings";
 
-import {useClickSound} from "@/src/hooks/useClickSound";
+import { useClickSound } from "@/src/hooks/useClickSound";
 import JigsawBoard from "@/src/modules/jigsaw/JigsawBoard";
-import {showInterstitial} from "@/src/services/adManager";
-import {useProgressActions} from "@/src/store/progressStore";
-import {Level} from "@/src/types";
+import { showInterstitial } from "@/src/services/adManager";
+import { useProgressActions } from "@/src/store/progressStore";
+import { Level } from "@/src/types";
 
 export default function JigsawGameScreen() {
   const router = useRouter();
@@ -403,10 +420,10 @@ export default function JigsawGameScreen() {
           {/* Confetti (Only for current active game) */}
           {status === "won" && (
             <View style={styles.confettiContainer} pointerEvents="none">
-              <DotLottie
-                source={require("@/src/assets/animations/confettie.lottie")}
+              <LottieView
+                source={require("@/src/assets/animations/confettie.json")}
                 style={{ flex: 1 }}
-                autoplay
+                autoPlay
                 loop={true}
               />
             </View>

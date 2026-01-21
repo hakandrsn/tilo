@@ -13,7 +13,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22.21.1
-          cache: 'npm'
+          cache: "npm"
 
       - name: 🏗 Setup Expo
         uses: expo/expo-github-action@v8
@@ -29,7 +29,14 @@ jobs:
 
       - name: 🚀 Build iOS
         run: |
-          eas build --platform ios --profile production --local --non-interactive
+          eas build --platform ios --profile production --local --non-interactive --output ios-build.ipa
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+
+      - name: 🍎 Submit to App Store
+        run: |
+          eas submit --platform ios --path ios-build.ipa --profile production --non-interactive --no-wait
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
@@ -41,4 +48,3 @@ jobs:
           path: |
             *.ipa
             *.tar.gz
-            
