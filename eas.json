@@ -19,11 +19,12 @@
     "production": {
       "channel": "production",
       "autoIncrement": true,
-      "distribution": "store",
-      "ascAppId": "6758107357"
+      "distribution": "store"
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ascAppId": "6758107357"
+    }
   }
 }
