@@ -153,8 +153,9 @@ const JigsawPiece: React.FC<JigsawPieceProps> = ({
   });
 
   // Use full piece dimensions (GAP=0 means no size reduction needed)
-  const displayWidth = pieceWidth;
-  const displayHeight = pieceHeight;
+  // We add a small overlap (bleed) to prevent sub-pixel gaps between pieces
+  const displayWidth = pieceWidth + 1;
+  const displayHeight = pieceHeight + 1;
 
   // Animated opacity based on flip rotation (works on Android, unlike backfaceVisibility)
   const backStyle = useAnimatedStyle(() => ({

@@ -45,18 +45,18 @@ const JigsawBoard: React.FC<JigsawBoardProps> = ({
 
     let pieceW, pieceH;
     if (suggestedPieceH * gridSize.rows <= availableHeight) {
-      pieceW = Math.floor(maxPieceW);
-      pieceH = Math.floor(suggestedPieceH);
+      pieceW = maxPieceW;
+      pieceH = suggestedPieceH;
     } else {
       const maxPieceH = availableHeight / gridSize.rows;
-      pieceH = Math.floor(maxPieceH);
-      pieceW = Math.floor(maxPieceH * (3 / 4));
+      pieceH = maxPieceH;
+      pieceW = maxPieceH * (3 / 4);
     }
 
     const tGridHeight = pieceH * gridSize.rows;
     const tGridWidth = pieceW * gridSize.cols;
-    const tOffset = Math.floor(Math.max(0, (boardHeight - tGridHeight) / 2));
-    const lOffset = Math.floor(Math.max(0, (boardWidth - tGridWidth) / 2));
+    const tOffset = Math.max(0, (boardHeight - tGridHeight) / 2);
+    const lOffset = Math.max(0, (boardWidth - tGridWidth) / 2);
 
     return {
       pieceWidth: pieceW,

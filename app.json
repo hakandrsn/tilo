@@ -28,7 +28,8 @@
         "NSUserTrackingUsageDescription": "Bu izin, size ilgi alanlarınıza uygun reklamlar göstermek için kullanılacaktır."
       },
       "entitlements": {
-        "com.apple.developer.networking.wifi-info": true
+        "com.apple.developer.networking.wifi-info": true,
+        "com.apple.developer.game-center": true
       }
     },
     "android": {
