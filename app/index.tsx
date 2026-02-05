@@ -237,6 +237,7 @@ export default function StartScreen() {
             </Animated.View>
           </>
         )}
+        {/* <DevPanel /> */}
       </View>
     </SafeAreaView>
   );

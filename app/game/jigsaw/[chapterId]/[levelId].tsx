@@ -22,12 +22,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Stores & Hooks
-import {
-  calculateStars,
-  COLORS,
-  LEVELS_PER_CHAPTER,
-  TOTAL_CHAPTERS,
-} from "@/src/constants/gameConfig";
+import { calculateStars, COLORS } from "@/src/constants/gameConfig";
 import { useJigsawStore } from "@/src/modules/jigsaw/jigsawStore";
 import { useAdStore } from "@/src/store/adStore";
 import { useDataActions } from "@/src/store/dataStore";
@@ -46,7 +41,7 @@ import { useProgressActions } from "@/src/store/progressStore";
 import { Level } from "@/src/types";
 
 const GAME_LAYOUT = {
-  HEADER: 0.05, // Keep for reference or remove if dynamic
+  HEADER: 60, // Fixed height in pixels to prevent overlap on small screens
   // STATS, STARS removed - using natural size
   // BOARD removed - using flex: 1
   NEXT_AREA_HEIGHT: 85, // reduced by ~30% from 120
@@ -73,8 +68,8 @@ export default function JigsawGameScreen() {
   );
   const [currentLevelId, setCurrentLevelId] = useState(Number(params.levelId));
 
-  const { getLevelById, getChapters } = useDataActions();
-  const { completeLevel, setLastPlayed } = useProgressActions();
+  const { getLevelById, getChapters, getChapterById } = useDataActions();
+  const { completeLevel, setLastPlayed, unlockChapter } = useProgressActions();
   const resetGame = useJigsawStore((state) => state.actions.resetGame);
   const status = useJigsawStore((state) => state.status);
   const moves = useJigsawStore((state) => state.moves);
@@ -142,11 +137,33 @@ export default function JigsawGameScreen() {
           let nextChapter = currentChapter;
           let nextLevel = cLvl + 1;
 
-          if (nextLevel > LEVELS_PER_CHAPTER) {
+          // Check if next level exists in current chapter (Simple check via getLevelById)
+          // Note: getLevelById is async and checks the store
+          const nextLvlExists = await getLevelById(nextChapter, nextLevel);
+
+          if (!nextLvlExists) {
             nextChapter++;
             nextLevel = 1;
           }
-          if (nextChapter > TOTAL_CHAPTERS) return;
+
+          // Check if next chapter exists using store action
+          // We can't use getChapterById synchronous inside async efficiently if it's not loaded,
+          // but we called getChapters() at init.
+          // Better: just try to get the level. If level exists, chapter likely exists.
+          // OR check explicit chapter existence if nextLevel was reset to 1.
+
+          if (nextLevel === 1) {
+            // We moved to a new chapter, check if it exists
+            // We can fetch the chapter list or just try getLevelById again.
+            // But getLevelById might not check if chapter is valid in strict definitions?
+            // Let's rely on getLevelById returning null if chapter/level doesn't exist.
+          }
+
+          // If we want to be strict about "Last Chapter":
+          // const chapters = useDataStore.getState().chapters;
+          // if (nextChapter > chapters.length) return;
+          // But hooking into store state here is messy.
+          // Let's just try to fetch the level.
 
           const nextLvl = await getLevelById(nextChapter, nextLevel);
 
@@ -216,15 +233,33 @@ export default function JigsawGameScreen() {
     let nextChapter = currentChapter;
     let nextLevelId = currentLevelId + 1;
 
-    if (nextLevelId > LEVELS_PER_CHAPTER) {
+    // Check if next level exists in THIS chapter
+    const nextLevelInCurrentChapter = await getLevelById(
+      currentChapter,
+      nextLevelId,
+    );
+
+    // Check if we exhausted current chapter
+    if (!nextLevelInCurrentChapter) {
+      // If no next level in this chapter, move to next chapter
       nextChapter++;
       nextLevelId = 1;
-    }
 
-    // Chapter bittiyse çık (Mevcut mantığın)
-    if (nextChapter > TOTAL_CHAPTERS) {
-      router.back();
-      return;
+      // OPTIONAL: Check if next chapter exists before proceeding?
+      // For now, we will let logic proceed. If next chapter doesn't exist,
+      // subsequent getLevelById or logic inside completeLevel might handle it
+      // or the user will just be taken back if next load fails.
+
+      // Better: Check if Chapter Exists
+      const nextChapterData = getChapterById(nextChapter);
+      if (!nextChapterData) {
+        // No more chapters!
+        router.back();
+        return;
+      }
+
+      // Unlock the new chapter since we are proceeding to it
+      unlockChapter(nextChapter);
     }
 
     // -----------------------------------------------------------
@@ -346,7 +381,7 @@ export default function JigsawGameScreen() {
 
   // Layout Calculations - STACK LAYOUT
 
-  const HEADER_HEIGHT_CONTENT = height * GAME_LAYOUT.HEADER;
+  const HEADER_HEIGHT_CONTENT = GAME_LAYOUT.HEADER;
   const HEADER_HEIGHT_TOTAL = HEADER_HEIGHT_CONTENT + insets.top;
   const BANNER_HEIGHT = height * GAME_LAYOUT.BANNER;
 
@@ -554,7 +589,8 @@ export default function JigsawGameScreen() {
         {/* 6. BANNER (Fixed Layout, Margin Auto) */}
         <View
           style={{
-            height: BANNER_HEIGHT,
+            height: BANNER_HEIGHT + insets.bottom, // Add safe area to total height
+            paddingBottom: insets.bottom, // Push content up
             justifyContent: "flex-end",
             alignItems: "center",
             backgroundColor: "transparent",

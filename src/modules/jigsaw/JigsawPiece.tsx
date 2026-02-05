@@ -1,5 +1,6 @@
 import { Image } from "expo-image";
 import React, { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { StyleSheet } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
@@ -175,11 +176,7 @@ const JigsawPiece: React.FC<JigsawPieceProps> = ({
             width: displayWidth,
             height: displayHeight,
             overflow: "hidden",
-            borderTopWidth: hasNeighborTop ? 0 : BORDER_WIDTH,
-            borderBottomWidth: hasNeighborBottom ? 0 : BORDER_WIDTH,
-            borderLeftWidth: hasNeighborLeft ? 0 : BORDER_WIDTH,
-            borderRightWidth: hasNeighborRight ? 0 : BORDER_WIDTH,
-            borderColor: BORDER_COLOR,
+            // Borders moved to BorderOverlay
           },
           animatedStyle,
         ]}
@@ -225,6 +222,29 @@ const JigsawPiece: React.FC<JigsawPieceProps> = ({
             cachePolicy="memory-disk"
           />
         </Animated.View>
+
+        {/* Border Overlay - Draws borders ON TOP of image without affecting layout */}
+        <React.Fragment>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              {
+                ...StyleSheet.absoluteFillObject,
+                zIndex: 10,
+                borderTopWidth: hasNeighborTop ? 0 : BORDER_WIDTH,
+                borderBottomWidth: hasNeighborBottom ? 0 : BORDER_WIDTH,
+                borderLeftWidth: hasNeighborLeft ? 0 : BORDER_WIDTH,
+                borderRightWidth: hasNeighborRight ? 0 : BORDER_WIDTH,
+                borderColor: BORDER_COLOR,
+              },
+              // We reuse backStyle/frontStyle logic if we want borders to fade only when
+              // a specific side is showing?
+              // Actually original code had borders on the container so they were always visible
+              // (flipped with the container).
+              // So no extra opacity animation needed here, it inherits container's transform.
+            ]}
+          />
+        </React.Fragment>
       </Animated.View>
     </GestureDetector>
   );

@@ -1,7 +1,7 @@
 import { GridSize } from "../types";
 
-export const LEVELS_PER_CHAPTER = 24;
-export const TOTAL_CHAPTERS = 20;
+// LEVELS_PER_CHAPTER and TOTAL_CHAPTERS removed for dynamic calculation
+// levels are governed by the server/data source now.
 
 // SHUFFLE_MOVES logic moved to puzzleLogic dynamic calculation
 

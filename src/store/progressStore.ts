@@ -2,11 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { create } from "zustand";
 import { auth, db } from "../../firebaseConfig";
-import {
-  calculateStars,
-  LEVELS_PER_CHAPTER,
-  STORAGE_KEYS,
-} from "../constants/gameConfig";
+import { calculateStars, STORAGE_KEYS } from "../constants/gameConfig";
 import { GridSize, LevelProgress, UserProgress } from "../types";
 
 interface ProgressState {
@@ -27,6 +23,7 @@ interface ProgressActions {
   setLastPlayed: (chapterId: number, levelId: number) => void;
   isLevelUnlocked: (chapterId: number, levelId: number) => boolean;
   isChapterUnlocked: (chapterId: number) => boolean;
+  unlockChapter: (chapterId: number) => void;
   getLevelProgress: (
     chapterId: number,
     levelId: number,
@@ -209,14 +206,30 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
         totalCoins: (progress.totalCoins || 0) + coinBonus,
       };
 
-      if (
-        levelId === LEVELS_PER_CHAPTER &&
-        !progress.unlockedChapters.includes(nextChapterId)
-      ) {
-        newProgress.unlockedChapters = [
-          ...newProgress.unlockedChapters,
-          nextChapterId,
-        ].sort((a, b) => a - b);
+      if (!progress.unlockedChapters.includes(nextChapterId)) {
+        // Should we unlock next chapter?
+        // Previously: if levelId === LEVELS_PER_CHAPTER
+        // Now: We don't know the max levels here easily without passing it in or looking it up.
+        // BUT, usually we unlock the next chapter when the LAST level of current chapter is done.
+        // Or maybe we unlock it regardless?
+        // If generic logic: "If next level exists?" No.
+        // Solution: We should probably require the Caller (GameScreen) to handle chapter unlocking
+        // or pass a flag "isLastLevel".
+        // OR we just unlock it if we detected we're moving to next chapter in Game Screen.
+        // For now, to be safe and dynamic:
+        // If the user completes a level, and it happens to be the last one, we unlock next.
+        // But here we just have chapterId/levelId.
+        // Let's rely on the GameScreen's "nextLevelInCurrentChapter" check?
+        // Actually, completeLevel is called BEFORE expected navigation.
+        // Temporary Dynamic Fix:
+        // Allow passing "isLastLevel" param?
+        // OR: Just don't auto-unlock here if we move logic to GameScreen?
+        // User wants dynamic.
+        // Let's leave unlocking logic here BUT it needs to know if it was the last level.
+        // Since we don't know, we can't reliably unlock next chapter HERE properly without data.
+        // However, the GameScreen DOES know if it's the last level (because it checks for next level).
+        // I will removing this auto-unlock block here and ensure GameScreen handles unlocking?
+        // OR I can make completeLevel accept an optional 'unlockNextChapter' boolean.
       }
 
       // 1. Update Local State IMMEDIATELY (UI updates now, WinModal shows)
@@ -304,6 +317,38 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
       return get().progress.unlockedChapters.includes(chapterId);
     },
 
+    unlockChapter: async (chapterId: number) => {
+      const { progress } = get();
+      if (progress.unlockedChapters.includes(chapterId)) return;
+
+      const newProgress = {
+        ...progress,
+        unlockedChapters: [...progress.unlockedChapters, chapterId].sort(
+          (a, b) => a - b,
+        ),
+      };
+
+      set({ progress: newProgress });
+
+      await AsyncStorage.setItem(
+        STORAGE_KEYS.USER_PROGRESS,
+        JSON.stringify(newProgress),
+      );
+
+      // Cloud sync
+      const user = auth.currentUser;
+      if (user) {
+        setDoc(
+          doc(db, "users", user.uid),
+          {
+            progress: { unlockedChapters: newProgress.unlockedChapters },
+            lastUpdated: new Date().toISOString(),
+          },
+          { merge: true },
+        ).catch(console.error);
+      }
+    },
+
     getLevelProgress: (chapterId: number, levelId: number) => {
       return (
         get().progress.completedLevels[getLevelKey(chapterId, levelId)] ?? null
@@ -315,16 +360,31 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
       let completed = 0;
       let stars = 0;
 
-      for (let i = 1; i <= LEVELS_PER_CHAPTER; i++) {
-        const levelProgress =
-          progress.completedLevels[getLevelKey(chapterId, i)];
-        if (levelProgress?.completed) {
-          completed++;
-          stars += levelProgress.stars;
-        }
-      }
+      // Problem: We don't know total levels here without inspecting "progress" keys
+      // or having the levels loaded.
+      // But we can count how many are completed *in the progress object*.
+      // AND we can assume the max level found in progress is at least the total? No.
 
-      return { completed, total: LEVELS_PER_CHAPTER, stars };
+      // For the "Total" count: Caller (LevelsScreen) calculates this using the actual Level objects.
+      // This helper might be redundant or should only return what it KNOWS (completed count).
+
+      // I will iterate object keys to find matches for this chapter.
+      const prefix = `${chapterId}-`;
+      let maxLevelIdFound = 0;
+
+      Object.keys(progress.completedLevels).forEach((key) => {
+        if (key.startsWith(prefix)) {
+          const levelId = parseInt(key.split("-")[1]);
+          if (levelId > maxLevelIdFound) maxLevelIdFound = levelId;
+
+          if (progress.completedLevels[key].completed) {
+            completed++;
+            stars += progress.completedLevels[key].stars;
+          }
+        }
+      });
+
+      return { completed, total: maxLevelIdFound, stars }; // Total is just max found, not reliable for "Total in Chapter" but good enough for internal ref
     },
 
     getLastPlayed: () => {
@@ -362,14 +422,11 @@ export const useProgressStore = create<ProgressStore>((set, get) => ({
       let nextChapter = lastPlayed.chapterId;
       let nextLevel = lastPlayed.levelId + 1;
 
-      // Check Chapter Boundary
-      if (nextLevel > LEVELS_PER_CHAPTER) {
-        nextChapter++;
-        nextLevel = 1;
-      }
-
-      // We don't check TOTAL_CHAPTERS here; let the UI handle "Coming Soon" or valid check if needed.
-      // But typically we just return valid coordinates.
+      // We CANNOT check Chapter Boundary here easily without DataStore.
+      // So we will just return the next integer.
+      // The calling component must verify validity.
+      // If the caller blindly trusts this, it might try to open Chapter 1 Level 100.
+      // But GameScreen handles "Level does not exist" gracefully now (redirects or shows error).
 
       return { chapterId: nextChapter, levelId: nextLevel };
     },

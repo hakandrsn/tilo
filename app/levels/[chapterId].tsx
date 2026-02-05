@@ -74,18 +74,29 @@ export default function LevelsScreen() {
 
   /* Calculate Chapter Progress Reactive */
   const chapterProgress = React.useMemo(() => {
+    // If levels are not loaded yet, we can try to guess total or just return 0/0
+    // But ideally we rely on levels.length.
+    // If levels is empty, this returns 0/0 which is fine for loading state.
+
     let completed = 0;
     let stars = 0;
-    for (let i = 1; i <= 24; i++) {
-      const key = `${chapterId}-${i}`;
+
+    // Fallback if levels is empty but we want to show something?
+    // Actually, iterating over the levels is the most correct way.
+    // If levels are not loaded, we can't key off IDs reliably unless we assume 1..N
+    // But user specifically wants to support N != 24.
+
+    for (const level of levels) {
+      const key = `${chapterId}-${level.id}`;
       const p = userProgress.completedLevels[key];
       if (p?.completed) {
         completed++;
         stars += p.stars;
       }
     }
-    return { completed, total: 24, stars };
-  }, [userProgress.completedLevels, chapterId]);
+
+    return { completed, total: levels.length, stars };
+  }, [userProgress.completedLevels, chapterId, levels]);
 
   // Calculate Last Open Level for Highlighting
   const lastOpenLevelId = React.useMemo(() => {
