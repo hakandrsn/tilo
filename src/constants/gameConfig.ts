@@ -117,19 +117,19 @@ const TEST_AD_CONFIG = {
 const PROD_AD_CONFIG = {
   interstitial: {
     android: "ca-app-pub-5502183878891798/5198222798",
-    ios: "ca-app-pub-5502183878891798/3827454899",
+    ios: "ca-app-pub-5502183878891798/3064512845",
   },
   rewarded: {
     android: "ca-app-pub-5502183878891798/3109269595",
-    ios: "ca-app-pub-5502183878891798/2514373229",
+    ios: "ca-app-pub-5502183878891798/1592375424",
   },
   banner: {
     android: "ca-app-pub-5502183878891798/4422351261",
-    ios: "ca-app-pub-5502183878891798/2934735716",
+    ios: "ca-app-pub-5502183878891798/8046103138",
   },
   native: {
     android: "ca-app-pub-5502183878891798/2705944917",
-    ios: "ca-app-pub-5502183878891798/8494276450",
+    ios: "ca-app-pub-5502183878891798/7786346749",
   },
 };
 
