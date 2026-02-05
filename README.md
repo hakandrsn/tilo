@@ -1,70 +1,54 @@
-# Version 1.0.0
+# Tilo: Jigsaw Puzzle
+## Tilo, klasik yapboz deneyimini mobil cihazlara taşıyan; sürükle-bırak, parça gruplama ve otomatik manyetik birleşme (snapping) gibi gelişmiş mekaniklere sahip bir React Native oyunudur.
 
-# Tilo - Modern Jigsaw Puzzle Oyunu
+Bu projeyi geliştirirken en büyük motivasyonum, mobildeki "dokunma hissini" (haptic feedback) ve parça yönetimindeki karmaşık state mantığını (Zustand ile) en akıcı şekilde çözmekti.
 
-Tilo, görsel odaklı, akıcı ve kullanıcı dostu bir Jigsaw (Yapboz) oyunudur. Uygulama, bölümler (Chapters) ve seviyeler (Levels) üzerine kurulu bir ilerleme sistemine sahiptir.
+### Öne Çıkan Özellikler
+Sıradan bir puzzle oyunundan teknik olarak ayrıştığı noktalar:
 
-## 🎮 Oyun Hakkında
+Akıllı Gruplama (Smart Grouping): Yan yana gelen doğru parçalar sadece görsel olarak değil, mantıksal olarak da birleşir. Artık tek bir parça gibi sürüklenebilirler.
 
-Oyun, kullanıcıların farklı kategorilerdeki muhteşem görselleri parçalara ayırıp tekrar birleştirmesini hedefler. Temiz bir arayüz, canlı renkler ve akıcı animasyonlarla premium bir deneyim sunar.
+Dinamik Grid Sistemi: 3x4'ten 5x6'ya kadar değişen zorluk seviyeleri ve buna göre yeniden hesaplanan parça boyutları.
 
-### Oyun Kuralları
+Performans Odaklı: Yüzlerce parça ekranda olsa bile kasmadan sürükleme (Drag & Drop) yapabilmek için optimize edilmiş render mantığı.
 
-1.  **Parça Birleştirme:** Parçaları tablonun üzerinde sürükleyerek doğru yerlerine yerleştirin.
-2.  **Gruplama:** Birbiriyle komşu olan doğru parçalar yan yana geldiğinde otomatik olarak birleşir ve grup halinde hareket ettirilebilir.
-3.  **İlerleme:** Her bölümde 24 seviye bulunur. Bir seviyeyi tamamlamadan sonrakine geçemezsiniz.
-4.  **Zorluk Seviyesi:** Seviye ilerledikçe tablo boyutu (Grid Size) artar:
-    - **Seviye 1-8:** 3x4 (12 Parça)
-    - **Seviye 9-16:** 4x5 (20 Parça)
-    - **Seviye 17+:** 5x6 (30 Parça)
+Bulut Entegrasyonu: Firebase ile anonim kullanıcı girişi ve ilerleme kaydı (böylece oyun silinse bile level'lar kaybolmaz).
 
-### Yıldız Sistemi
+### Teknik Derinlik (Tech Stack)
+Bir Full-Stack geliştirici yaklaşımıyla projeyi şu temeller üzerine kurdum:
 
-Başarınız hamle sayınıza göre değerlendirilir:
+Core: React Native (Expo) & TypeScript
 
-- ⭐ ⭐ ⭐ (3 Yıldız): Parça sayısı kadar veya daha az hamleyle tamamlandığında.
-- ⭐ ⭐ (2 Yıldız): Parça sayısı + tablonun küçük kenarı kadarlık bir toleransla tamamlandığında.
-- ⭐ (1 Yıldız): Daha fazla hamle yapıldığında.
+State Management: Zustand (Redux'a göre daha hafif ve hook tabanlı olduğu için tercih ettim, özellikle parça koordinatlarını anlık takip etmek için ideal).
 
----
+Backend & Auth: Firebase (Anonymous Auth & Firestore).
 
-## 🛠️ Teknik Yapı ve Sabitler
+UX/UI: Haptic Feedback entegrasyonu ve responsive tasarım (Tablet/Telefon uyumlu).
 
-Oyunun temel yapı taşları `src/constants` altındaki dosyalarda tanımlanmıştır.
+### Geliştirme Sürecinden Notlar
+Projeyi geliştirirken karşılaştığım en tatlı zorluk "Parça Çarpışma Mantığı" idi. Kullanıcı bir parçayı sürükleyip bıraktığında:
 
-### 🎨 Renk Paleti (`colors.ts`)
+Doğru yerde mi?
 
-Oyunun imzası olan canlı renkler merkezi bir paletten yönetilir:
+Yanında başka bir doğru parça var mı?
 
-- **Background (Turkuaz):** `#4bc9c3` - Ana arka plan.
-- **Primary (Sunflower):** `#f9cd46` - Ana butonlar ve vurgular.
-- **Secondary (Coral):** `#fc7e68` - Geçişler, kenarlıklar ve özel metinler.
-- **Functional:** Başarı için Emerald (`#10b981`), hatalar için Red (`#ef4444`).
+Eğer varsa, bunları yeni bir "Grup" objesi olarak mı birleştirmeliyim yoksa mevcut gruba mı eklemeliyim? Sorularını milisaniyeler içinde cevaplayan bir algoritma kurmak, projenin en öğretici kısmıydı.
 
-### ⚙️ Oyun Yapılandırması (`gameConfig.ts`)
+### Kurulum
+Projeyi incelemek veya geliştirmek isterseniz:
+```
+# Repoyu klonlayın
+git clone https://github.com/hakandrsn/tilo.git
 
-- **Bölüm Sayısı:** 20 ana bölüm.
-- **Seviye Sayısı:** Bölüm başına 24 seviye.
-- **İpucu Sistemi:** Başlangıçta 10 ipucu, bölüm tamamlandığında +5 bonus.
-- **Storage:** Kullanıcı ilerlemesi ve cihaz bilgileri `@puzzle_game_` prefix'li anahtarlar ile kalıcı olarak saklanır.
+# Klasöre girin
+cd tilo
 
-### 📐 Layout ve Tasarım (`layout.ts`)
+# Bağımlılıkları yükleyin
+npm install
 
-Tüm arayüz ölçüleri responsive bir yapı sunmak adına sabitleştirilmiştir:
+# Firebase ayarları için
+# (Kendi firebaseConfig.js dosyanızı oluşturmanız gerekebilir)
 
-- **Board Padding:** 16px
-- **Border Radius:** Modallar için 24px, butonlar için 35px.
-- **Ölçüler:** Yıldız boyutları, buton boyutları ve badge ölçüleri bu dosyadan yönetilir.
-
-### 📂 Veri Yapısı (`data.ts`)
-
-Oyunun sahip olduğu bölümlerin (Sevimli Dostlar, Lezzet Durağı, Neon Sokaklar vb.) isimleri, açıklamaları ve kapak fotoğrafları burada tanımlanır.
-
----
-
-## ⚙️ Nasıl Çalışır?
-
-- **Zustand Store:** Oyunun tüm anlık durumu (parça pozisyonları, hamle sayısı, grup bilgileri) merkezi bir store üzerinden yönetilir.
-- **Responsive Tasarım:** Uygulama Telefon, Tablet ve Desktop (Web) için ayrı breakpoint'lere sahiptir. Ekran genişliğine göre tablo boyutu otomatik ayarlanır.
-- **Haptic Feedback:** Parçalar birleştiğinde veya hareket ettiğinde kullanıcıya fiziksel geri bildirim verilir.
-- **Firebase & Auth:** Kullanıcıların ilerlemesi cihaz ID'si üzerinden anonim olarak Firebase'e kaydedilir, böylece uygulama silinse bile (SecureStore desteğiyle) ilerleme korunur.
+# Başlatın
+npx expo start
+```
